@@ -26,6 +26,9 @@
         <span class="pulse-indicator"></span>
         <span>NAVIC S-BAND LINK: ACTIVE (1200 bps)</span>
       </div>
+      <button id="btnCommanderAuth" class="btn-header-reset" style="border-color:#38bdf8;color:#38bdf8;">
+        🔒 Coordinator Login
+      </button>
       <button id="btnResetDemo" class="btn-header-reset" title="Reset database to realistic Himalayan cloudburst crisis">
         ↺ Reset Scenario
       </button>
@@ -189,14 +192,37 @@
   </section>
 
   <!-- =========================================================================
-       VIEW 3: Rescue Teams & Fleet Roster
+       VIEW 3: Rescue Teams & Fleet Roster (PROTECTED)
        ========================================================================= -->
   <section id="view-fleet" class="view-panel">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;">
       <h2 style="font-size:1.2rem;color:#fff;">Operational Field Rescue Teams</h2>
-      <span style="font-size:0.8rem;color:var(--text-muted);">NDRF • SDRF • IAF Helicopter Unit • ITBP • Red Cross Medical • Civil Defence</span>
+      <div style="display:flex;gap:0.5rem;align-items:center;">
+        <span id="fleetAuthStatusBadge" class="status-pill" style="color:var(--p2-high);">🔒 Authentication Required</span>
+        <span style="font-size:0.8rem;color:var(--text-muted);">NDRF • SDRF • IAF • ITBP</span>
+      </div>
     </div>
-    <div id="teamsGridContainer" class="teams-grid">
+
+    <!-- Auth Protection Lock Screen (Shown when not authenticated) -->
+    <div id="fleetLockScreen" style="background:var(--bg-secondary);border:1px solid var(--border-color);border-radius:8px;padding:3rem 2rem;text-align:center;max-width:600px;margin:2rem auto;">
+      <div style="font-size:3rem;margin-bottom:1rem;">🛡️</div>
+      <h3 style="font-size:1.3rem;color:#fff;margin-bottom:0.5rem;">Operational Fleet Command Restricted</h3>
+      <p style="font-size:0.85rem;color:var(--text-muted);margin-bottom:1.5rem;line-height:1.5;">
+        The Rescue Fleet roster, live telemetry, and team deployment dispatch actions are restricted to authorized Disaster Response Coordinators (NDRF / SDMA / Armed Forces).
+      </p>
+      <div style="max-width:320px;margin:0 auto;display:flex;flex-direction:column;gap:0.75rem;">
+        <input type="password" id="fleetAuthPasscodeInput" class="form-control" placeholder="Enter Commander Passcode..." style="text-align:center;font-size:1rem;letter-spacing:0.1em;">
+        <button id="btnFleetLogin" class="btn-primary" style="padding:0.7rem;">
+          Unlock Operational Fleet Roster 🔓
+        </button>
+        <div style="font-size:0.72rem;color:var(--text-dim);margin-top:0.25rem;">
+          Default Coordinator Passcode: <code style="color:#38bdf8;">NDRF-2026-RESCUE</code>
+        </div>
+      </div>
+    </div>
+
+    <!-- Active Fleet Grid (Shown when authenticated) -->
+    <div id="teamsGridContainer" class="teams-grid" style="display:none;">
       <!-- Rendered by app.js -->
     </div>
   </section>
@@ -500,6 +526,28 @@ Select constellation, configure rain fade, and click Transmit to inspect binary 
       </form>
     </div>
   </section>
+
+  <!-- Coordinator Login Modal -->
+  <div id="authModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.75);backdrop-filter:blur(6px);z-index:999;align-items:center;justify-content:center;">
+    <div style="background:var(--bg-secondary);border:1px solid var(--border-color);border-radius:8px;padding:2rem;max-width:400px;width:90%;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;">
+        <h3 style="font-size:1.15rem;color:#fff;">Disaster Coordinator Login</h3>
+        <button id="btnCloseAuthModal" style="background:none;border:none;color:var(--text-muted);font-size:1.2rem;cursor:pointer;">✕</button>
+      </div>
+      <p style="font-size:0.8rem;color:var(--text-muted);margin-bottom:1.25rem;line-height:1.4;">
+        Enter your designated Mission Commander Passcode to unlock fleet command, team dispatch, and triage modifications.
+      </p>
+      <div style="display:flex;flex-direction:column;gap:0.75rem;">
+        <input type="password" id="modalAuthPasscodeInput" class="form-control" placeholder="Passcode (e.g. NDRF-2026-RESCUE)" style="text-align:center;font-size:0.95rem;">
+        <button id="btnModalSubmitAuth" class="btn-primary" style="padding:0.65rem;">
+          Authenticate Mission Commander 🛡️
+        </button>
+        <div style="font-size:0.7rem;color:var(--text-dim);text-align:center;">
+          Default Passcode: <code style="color:#38bdf8;">NDRF-2026-RESCUE</code>
+        </div>
+      </div>
+    </div>
+  </div>
 
   <!-- Toast Notification Container -->
   <div id="toastContainer" class="toast-container"></div>

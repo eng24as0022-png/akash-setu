@@ -12,11 +12,13 @@ class AkashSetuApp {
         this.teams = [];
         this.selectedIncidentId = null;
         this.activeTab = "triage";
+        this.authToken = localStorage.getItem("akash_commander_token");
 
         this.initTabs();
         this.initFilterEvents();
         this.initSOSForm();
         this.initDemoReset();
+        this.initAuth();
 
         // Initialize sub-engines
         this.mapEngine = new AkashMapEngine("disasterMapCanvas", (inc) => this.selectIncident(inc.id));
@@ -25,9 +27,153 @@ class AkashSetuApp {
 
         // Initial Data Load
         this.refreshAll();
+        this.updateAuthUI();
 
         // Auto-refresh poll every 8 seconds for real-time mission status
         setInterval(() => this.backgroundPoll(), 8000);
+    }
+
+    initAuth() {
+        const btnAuth = document.getElementById("btnCommanderAuth");
+        const modal = document.getElementById("authModal");
+        const btnCloseModal = document.getElementById("btnCloseAuthModal");
+        const btnModalSubmit = document.getElementById("btnModalSubmitAuth");
+        const modalInput = document.getElementById("modalAuthPasscodeInput");
+        const btnFleetLogin = document.getElementById("btnFleetLogin");
+        const fleetInput = document.getElementById("fleetAuthPasscodeInput");
+
+        if (btnAuth) {
+            btnAuth.addEventListener("click", () => {
+                if (this.authToken) {
+                    if (confirm("Sign out of Mission Commander mode and return to Public View?")) {
+                        this.logoutCommander();
+                    }
+                } else {
+                    modal.style.display = "flex";
+                    if (modalInput) modalInput.focus();
+                }
+            });
+        }
+
+        if (btnCloseModal) {
+            btnCloseModal.addEventListener("click", () => {
+                modal.style.display = "none";
+            });
+        }
+
+        if (btnModalSubmit) {
+            btnModalSubmit.addEventListener("click", () => {
+                const code = modalInput.value.trim();
+                this.loginCommander(code);
+            });
+        }
+
+        if (modalInput) {
+            modalInput.addEventListener("keydown", (e) => {
+                if (e.key === "Enter") {
+                    this.loginCommander(modalInput.value.trim());
+                }
+            });
+        }
+
+        if (btnFleetLogin) {
+            btnFleetLogin.addEventListener("click", () => {
+                const code = fleetInput.value.trim();
+                this.loginCommander(code);
+            });
+        }
+
+        if (fleetInput) {
+            fleetInput.addEventListener("keydown", (e) => {
+                if (e.key === "Enter") {
+                    this.loginCommander(fleetInput.value.trim());
+                }
+            });
+        }
+    }
+
+    async loginCommander(passcode) {
+        if (!passcode) {
+            this.showToast("Please enter a commander passcode", "error");
+            return;
+        }
+
+        try {
+            const resp = await fetch("/api/auth/login", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ passcode: passcode })
+            });
+
+            const data = await resp.json();
+            if (!resp.ok) throw new Error(data.error || "Authentication failed");
+
+            this.authToken = data.token;
+            localStorage.setItem("akash_commander_token", data.token);
+
+            const modal = document.getElementById("authModal");
+            if (modal) modal.style.display = "none";
+
+            this.updateAuthUI();
+            this.showToast("🛡️ Mission Commander Authorized (NDRF/SDMA)", "success");
+
+            if (this.selectedIncidentId) {
+                this.selectIncident(this.selectedIncidentId);
+            }
+        } catch (err) {
+            this.showToast(`Authentication Denied: ${err.message}`, "error");
+        }
+    }
+
+    logoutCommander() {
+        this.authToken = null;
+        localStorage.removeItem("akash_commander_token");
+        this.updateAuthUI();
+        this.showToast("Logged out of Commander Mode. Public read-only view active.", "info");
+        if (this.selectedIncidentId) {
+            this.selectIncident(this.selectedIncidentId);
+        }
+    }
+
+    updateAuthUI() {
+        const btnAuth = document.getElementById("btnCommanderAuth");
+        const lockScreen = document.getElementById("fleetLockScreen");
+        const fleetGrid = document.getElementById("teamsGridContainer");
+        const statusBadge = document.getElementById("fleetAuthStatusBadge");
+
+        if (btnAuth) {
+            if (this.authToken) {
+                btnAuth.innerHTML = "🛡️ Commander Active <span style='font-size:0.7rem;color:#fca5a5;'>[Logout]</span>";
+                btnAuth.style.borderColor = "#10b981";
+                btnAuth.style.color = "#10b981";
+            } else {
+                btnAuth.innerHTML = "🔒 Coordinator Login";
+                btnAuth.style.borderColor = "#38bdf8";
+                btnAuth.style.color = "#38bdf8";
+            }
+        }
+
+        if (lockScreen && fleetGrid && statusBadge) {
+            if (this.authToken) {
+                lockScreen.style.display = "none";
+                fleetGrid.style.display = "grid";
+                statusBadge.textContent = "🟢 Operational Commander Authenticated";
+                statusBadge.style.color = "#10b981";
+            } else {
+                lockScreen.style.display = "block";
+                fleetGrid.style.display = "none";
+                statusBadge.textContent = "🔒 Authentication Required";
+                statusBadge.style.color = "var(--p2-high)";
+            }
+        }
+    }
+
+    getAuthHeaders() {
+        const headers = { "Content-Type": "application/json" };
+        if (this.authToken) {
+            headers["Authorization"] = `Bearer ${this.authToken}`;
+        }
+        return headers;
     }
 
     initTabs() {
@@ -163,11 +309,21 @@ class AkashSetuApp {
         const btnReset = document.getElementById("btnResetDemo");
         if (btnReset) {
             btnReset.addEventListener("click", async () => {
+                if (!this.authToken) {
+                    this.showToast("🔒 Commander Login Required: Please authenticate to reset scenario.", "error");
+                    document.getElementById("authModal").style.display = "flex";
+                    return;
+                }
+
                 if (!confirm("Reset Akash Setu database to fresh Himalayan disaster scenario?")) return;
                 btnReset.textContent = "Resetting...";
                 try {
-                    const resp = await fetch("/api/system/reset-demo", { method: "POST" });
+                    const resp = await fetch("/api/system/reset-demo", {
+                        method: "POST",
+                        headers: this.getAuthHeaders()
+                    });
                     const data = await resp.json();
+                    if (!resp.ok) throw new Error(data.error);
                     this.showToast(data.message, "success");
                     this.refreshAll();
                 } catch (err) {
@@ -468,6 +624,12 @@ class AkashSetuApp {
     }
 
     async dispatchTeamToSelected(incidentId) {
+        if (!this.authToken) {
+            this.showToast("🔒 Commander Login Required: Please authenticate to dispatch rescue teams.", "error");
+            document.getElementById("authModal").style.display = "flex";
+            return;
+        }
+
         const select = document.getElementById("selectDispatchTeam");
         if (!select || !select.value) return;
 
@@ -475,7 +637,7 @@ class AkashSetuApp {
         try {
             const resp = await fetch(`/api/incidents/${incidentId}/dispatch`, {
                 method: "POST",
-                headers: { "Content-Type": "application/json" },
+                headers: this.getAuthHeaders(),
                 body: JSON.stringify({ team_id: teamId, author: "Mission Commander", notes: "Emergency operational dispatch" })
             });
             const data = await resp.json();
@@ -490,10 +652,16 @@ class AkashSetuApp {
     }
 
     async updateSelectedStatus(incidentId, newStatus) {
+        if (!this.authToken) {
+            this.showToast("🔒 Commander Login Required: Please authenticate to change incident operational status.", "error");
+            document.getElementById("authModal").style.display = "flex";
+            return;
+        }
+
         try {
             const resp = await fetch(`/api/incidents/${incidentId}/status`, {
                 method: "POST",
-                headers: { "Content-Type": "application/json" },
+                headers: this.getAuthHeaders(),
                 body: JSON.stringify({ status: newStatus, author: "Disaster Operations Lead" })
             });
             const data = await resp.json();
@@ -566,10 +734,16 @@ class AkashSetuApp {
     }
 
     async setTeamStatus(teamId, newStatus) {
+        if (!this.authToken) {
+            this.showToast("🔒 Commander Login Required: Please authenticate to modify fleet status.", "error");
+            document.getElementById("authModal").style.display = "flex";
+            return;
+        }
+
         try {
             const resp = await fetch(`/api/teams/${teamId}/status`, {
                 method: "POST",
-                headers: { "Content-Type": "application/json" },
+                headers: this.getAuthHeaders(),
                 body: JSON.stringify({ status: newStatus })
             });
             const data = await resp.json();

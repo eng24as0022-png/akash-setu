@@ -241,16 +241,20 @@ class TestFullSystemIntegration(unittest.TestCase):
             os.remove(cls.db_path)
         os.rmdir(cls.tmp_dir)
 
-    def _call_handler(self, method: str, path: str, body: dict = None):
+    def _call_handler(self, method: str, path: str, body: dict = None, headers_extra: dict = None):
         body_bytes = b""
         if body is not None:
             body_bytes = json.dumps(body).encode("utf-8")
 
-        headers_str = (
-            f"Host: 127.0.0.1\r\n"
-            f"Content-Type: application/json\r\n"
-            f"Content-Length: {len(body_bytes)}\r\n\r\n"
-        )
+        headers_dict = {
+            "Host": "127.0.0.1",
+            "Content-Type": "application/json",
+            "Content-Length": str(len(body_bytes))
+        }
+        if headers_extra:
+            headers_dict.update(headers_extra)
+
+        headers_str = "".join(f"{k}: {v}\r\n" for k, v in headers_dict.items()) + "\r\n"
         raw_input = f"{method} {path} HTTP/1.1\r\n{headers_str}".encode("utf-8") + body_bytes
 
         handler = AkashSetuRequestHandler.__new__(AkashSetuRequestHandler)
@@ -323,6 +327,31 @@ class TestFullSystemIntegration(unittest.TestCase):
         self.assertIn("priority_distribution", data)
         self.assertIn("humanitarian_impact", data)
         self.assertIn("satellite_network", data)
+
+    def test_auth_login_and_permission_protection(self):
+        # 1. Unauthenticated dispatch attempt should be rejected with 401
+        status, data = self._call_handler("POST", "/api/incidents/1/dispatch", body={"team_id": 1})
+        self.assertEqual(status, 401, "Unauthenticated dispatch must be rejected with 401!")
+
+        # 2. Invalid passcode login attempt
+        status, data = self._call_handler("POST", "/api/auth/login", body={"passcode": "WRONG-PASSWORD"})
+        self.assertEqual(status, 401)
+
+        # 3. Valid commander login
+        status, data = self._call_handler("POST", "/api/auth/login", body={"passcode": "NDRF-2026-RESCUE"})
+        self.assertEqual(status, 200)
+        self.assertTrue(data["authenticated"])
+        token = data["token"]
+        self.assertIsNotNone(token)
+
+        # 4. Authenticated dispatch with valid token should succeed
+        status, data = self._call_handler(
+            "POST", "/api/incidents/1/dispatch",
+            body={"team_id": 1, "author": "Commander Test", "notes": "Approved"},
+            headers_extra={"Authorization": f"Bearer {token}"}
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual(data["status"], "SUCCESS")
 
 
 if __name__ == "__main__":

@@ -11,6 +11,7 @@ import os
 import json
 import mimetypes
 import urllib.parse
+import hashlib
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from typing import Dict, Any, Optional
 
@@ -33,6 +34,10 @@ from core.satellite_sim import SatelliteLinkSimulator, SatellitePacketEncoder
 from core.seed_data import seed_database
 
 
+# Mission Commander Passcode (Configurable via environment variable for cloud deployment)
+COMMANDER_PASSCODE = os.environ.get("COMMANDER_PASSCODE", "NDRF-2026-RESCUE")
+COMMANDER_TOKEN = hashlib.sha256(f"AKASH-SETU-{COMMANDER_PASSCODE}".encode()).hexdigest()[:32]
+
 # Singletons for core engines
 classifier = DisasterClassifier()
 deduplicator = IncidentDeduplicator()
@@ -41,6 +46,19 @@ satellite_sim = SatelliteLinkSimulator()
 
 
 class AkashSetuRequestHandler(BaseHTTPRequestHandler):
+    def is_authenticated(self) -> bool:
+        """Verifies whether caller holds valid Mission Commander authorization."""
+        auth_header = self.headers.get("Authorization", "")
+        if auth_header.startswith("Bearer "):
+            token = auth_header[7:].strip()
+            if token == COMMANDER_TOKEN:
+                return True
+
+        custom_key = self.headers.get("X-Commander-Key", "").strip()
+        if custom_key == COMMANDER_PASSCODE or custom_key == COMMANDER_TOKEN:
+            return True
+
+        return False
     def log_message(self, format, *args):
         # Override to keep server console clean while logging API calls
         sys.stderr.write(f"[{self.log_date_time_string()}] {self.command} {self.path} - {format%args}\n")
@@ -101,6 +119,10 @@ class AkashSetuRequestHandler(BaseHTTPRequestHandler):
                         self._send_error(f"Incident #{inc_id} not found", status=404)
                     return
 
+            if path == "/api/auth/verify":
+                self._send_json({"authenticated": self.is_authenticated()})
+                return
+
             if path == "/api/teams":
                 teams = get_rescue_teams()
                 self._send_json({"teams": teams, "count": len(teams)})
@@ -148,7 +170,23 @@ class AkashSetuRequestHandler(BaseHTTPRequestHandler):
         path = parsed.path
 
         try:
-            # Route: Emergency report submission (citizen / responder)
+            # Route: Mission Commander authentication
+            if path == "/api/auth/login":
+                body = self._read_json_body()
+                passcode = (body.get("passcode") or "").strip()
+                if passcode == COMMANDER_PASSCODE:
+                    self._send_json({
+                        "authenticated": True,
+                        "token": COMMANDER_TOKEN,
+                        "role": "MISSION_COMMANDER",
+                        "agency": "NDRF / SDMA OPERATIONS COMMAND",
+                        "message": "Commander authentication successful"
+                    })
+                else:
+                    self._send_error("Invalid Mission Commander Passcode. Authorization denied.", status=401)
+                return
+
+            # Route: Emergency report submission (citizen / responder - PUBLIC)
             if path == "/api/emergency/submit":
                 body = self._read_json_body()
                 raw_text = (body.get("raw_text") or "").strip()
@@ -344,8 +382,12 @@ class AkashSetuRequestHandler(BaseHTTPRequestHandler):
                 })
                 return
 
-            # Route: Update incident status
+            # Route: Update incident status (PROTECTED)
             if path.startswith("/api/incidents/") and path.endswith("/status"):
+                if not self.is_authenticated():
+                    self._send_error("Authentication Required: Only authorized disaster coordinators can modify incident status.", status=401)
+                    return
+
                 parts = path.strip("/").split("/")
                 inc_id = int(parts[2])
                 body = self._read_json_body()
@@ -360,8 +402,12 @@ class AkashSetuRequestHandler(BaseHTTPRequestHandler):
                     self._send_error(f"Failed to update incident #{inc_id}", status=404)
                 return
 
-            # Route: Dispatch rescue team to incident
+            # Route: Dispatch rescue team to incident (PROTECTED)
             if path.startswith("/api/incidents/") and path.endswith("/dispatch"):
+                if not self.is_authenticated():
+                    self._send_error("Authentication Required: Only authorized disaster coordinators can dispatch rescue units.", status=401)
+                    return
+
                 parts = path.strip("/").split("/")
                 inc_id = int(parts[2])
                 body = self._read_json_body()
@@ -380,8 +426,12 @@ class AkashSetuRequestHandler(BaseHTTPRequestHandler):
                     self._send_error("Failed to dispatch team (invalid team_id or incident_id)", status=400)
                 return
 
-            # Route: Merge duplicate incidents
+            # Route: Merge duplicate incidents (PROTECTED)
             if path.startswith("/api/incidents/") and path.endswith("/merge"):
+                if not self.is_authenticated():
+                    self._send_error("Authentication Required: Only authorized coordinators can consolidate incidents.", status=401)
+                    return
+
                 parts = path.strip("/").split("/")
                 primary_id = int(parts[2])
                 body = self._read_json_body()
@@ -400,8 +450,12 @@ class AkashSetuRequestHandler(BaseHTTPRequestHandler):
                     self._send_error("Merge failed (invalid IDs or same incident)", status=400)
                 return
 
-            # Route: Update rescue team operational status
+            # Route: Update rescue team operational status (PROTECTED)
             if path.startswith("/api/teams/") and path.endswith("/status"):
+                if not self.is_authenticated():
+                    self._send_error("Authentication Required: Only authorized commanders can modify rescue fleet status.", status=401)
+                    return
+
                 parts = path.strip("/").split("/")
                 team_id = int(parts[2])
                 body = self._read_json_body()
@@ -416,8 +470,12 @@ class AkashSetuRequestHandler(BaseHTTPRequestHandler):
                     self._send_error(f"Failed to update team #{team_id}", status=404)
                 return
 
-            # Route: Reset database to fresh seed demo
+            # Route: Reset database to fresh seed demo (PROTECTED)
             if path == "/api/system/reset-demo":
+                if not self.is_authenticated():
+                    self._send_error("Authentication Required: Only authorized commanders can reset the scenario.", status=401)
+                    return
+
                 result = seed_database()
                 self._send_json({"status": "SUCCESS", "result": result, "message": "Akash Setu database reset to realistic Himalayan disaster scenario."})
                 return
