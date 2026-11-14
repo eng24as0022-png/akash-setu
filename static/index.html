@@ -1,0 +1,513 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Akash Setu (आकाश सेतु) - Tactical Disaster Response & Satellite Triage</title>
+  <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+
+  <!-- Header Bar -->
+  <header class="header-bar">
+    <div class="brand-section">
+      <div class="logo-symbol">AS</div>
+      <div class="brand-title">
+        <h1>
+          <span>AKASH SETU</span>
+          <span class="hindi-name">आकाश सेतु</span>
+        </h1>
+        <div class="brand-subtitle">Satellite Disaster Response & Tactical Triage Bridge • NDRF / SDMA / ISRO NavIC</div>
+      </div>
+    </div>
+
+    <div class="header-status-ribbon">
+      <div class="sat-badge">
+        <span class="pulse-indicator"></span>
+        <span>NAVIC S-BAND LINK: ACTIVE (1200 bps)</span>
+      </div>
+      <button id="btnResetDemo" class="btn-header-reset" title="Reset database to realistic Himalayan cloudburst crisis">
+        ↺ Reset Scenario
+      </button>
+    </div>
+  </header>
+
+  <!-- Quick Stats KPI Bar -->
+  <section class="kpi-bar">
+    <div class="kpi-card crit">
+      <div>
+        <div class="kpi-label">P1 Life Threat (Critical)</div>
+        <div class="kpi-value" id="headerKpiP1" style="color:var(--p1-crit);">0</div>
+      </div>
+      <span class="pulse-indicator red"></span>
+    </div>
+
+    <div class="kpi-card amber">
+      <div>
+        <div class="kpi-label">Active Disasters</div>
+        <div class="kpi-value" id="headerKpiActive" style="color:var(--p2-high);">0</div>
+      </div>
+      <span style="font-size:1.4rem;">⚠️</span>
+    </div>
+
+    <div class="kpi-card cyan">
+      <div>
+        <div class="kpi-label">Rescue Units Deployed</div>
+        <div class="kpi-value" id="headerKpiTeams" style="color:var(--sat-cyan);">0</div>
+      </div>
+      <span style="font-size:1.4rem;">🚁</span>
+    </div>
+
+    <div class="kpi-card emerald">
+      <div>
+        <div class="kpi-label">Known Trapped Persons</div>
+        <div class="kpi-value" id="headerKpiTrapped" style="color:var(--sat-emerald);">0</div>
+      </div>
+      <span style="font-size:1.4rem;">👥</span>
+    </div>
+  </section>
+
+  <!-- Tactical Navigation Tabs -->
+  <nav class="nav-tab-container">
+    <button class="nav-tab-btn active" data-view="triage">
+      <span>🚨 Live Triage Queue</span>
+      <span class="badge-tab" id="badgeTabP1">0</span>
+    </button>
+    <button class="nav-tab-btn" data-view="map">
+      <span>🗺️ Geospatial Tactical Map</span>
+    </button>
+    <button class="nav-tab-btn" data-view="fleet">
+      <span>🚁 Rescue Teams & Fleet</span>
+    </button>
+    <button class="nav-tab-btn" data-view="satellite">
+      <span>📡 Satellite Comm Simulator</span>
+    </button>
+    <button class="nav-tab-btn" data-view="analytics">
+      <span>📊 Disaster Analytics & SITREP</span>
+    </button>
+    <button class="nav-tab-btn" data-view="sos">
+      <span>📝 Report Emergency (SOS Intake)</span>
+    </button>
+  </nav>
+
+  <!-- =========================================================================
+       VIEW 1: Live Triage Queue & Inspection Drawer
+       ========================================================================= -->
+  <main id="view-triage" class="view-panel active">
+    <!-- Filter Toolbar -->
+    <div class="triage-toolbar">
+      <div class="filter-group">
+        <span class="filter-label">Priority:</span>
+        <select id="filterPriority" class="filter-select">
+          <option value="ALL">All Priorities (P1 - P4)</option>
+          <option value="P1">P1 - Critical / Life Threat</option>
+          <option value="P2">P2 - High Urgency</option>
+          <option value="P3">P3 - Elevated</option>
+          <option value="P4">P4 - Standard / Logistics</option>
+        </select>
+
+        <span class="filter-label" style="margin-left:0.5rem;">Status:</span>
+        <select id="filterStatus" class="filter-select">
+          <option value="ALL">All Statuses</option>
+          <option value="PENDING_TRIAGE">Pending Triage</option>
+          <option value="TRIAGED">Triaged</option>
+          <option value="DISPATCHED">Dispatched</option>
+          <option value="IN_PROGRESS">In Progress / On Site</option>
+          <option value="RESOLVED">Resolved / Safe</option>
+        </select>
+
+        <span class="filter-label" style="margin-left:0.5rem;">Disaster:</span>
+        <select id="filterType" class="filter-select">
+          <option value="ALL">All Hazard Types</option>
+          <option value="FLOOD">Flood / Inundation</option>
+          <option value="LANDSLIDE">Landslide / Rockfall</option>
+          <option value="BUILDING_COLLAPSE">Building Collapse</option>
+          <option value="MEDICAL">Medical Emergency</option>
+          <option value="FIRE">Fire Hazard</option>
+        </select>
+      </div>
+
+      <div class="filter-group">
+        <input type="text" id="searchIncidentInput" class="search-input" placeholder="Search by sector, code, landmark...">
+      </div>
+    </div>
+
+    <!-- Triage Main Layout: Queue (Left) + Detail Drawer (Right) -->
+    <div class="triage-layout">
+      <div id="incidentQueueContainer" class="incident-queue-container">
+        <!-- Rendered by app.js -->
+      </div>
+
+      <div id="incidentDetailPanel" class="incident-detail-panel">
+        <div style="text-align:center;padding:3rem 1rem;color:var(--text-dim);">
+          Select an incident from the triage queue to inspect telemetry, mathematical risk trace, and dispatch rescue units.
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <!-- =========================================================================
+       VIEW 2: Tactical Geospatial Map
+       ========================================================================= -->
+  <section id="view-map" class="view-panel">
+    <div class="map-view-container">
+      <div class="map-canvas-wrapper">
+        <canvas id="disasterMapCanvas"></canvas>
+
+        <div class="map-controls-overlay">
+          <button class="btn-secondary" onclick="app.mapEngine.zoomIn()">+ Zoom In</button>
+          <button class="btn-secondary" onclick="app.mapEngine.zoomOut()">- Zoom Out</button>
+          <button class="btn-secondary" onclick="app.mapEngine.resetView()">Center Valley</button>
+        </div>
+
+        <div class="map-legend">
+          <div style="font-weight:700;color:#fff;margin-bottom:2px;">MAP SYMBOLS</div>
+          <div class="legend-item"><span class="legend-dot" style="background:#ef4444;box-shadow:0 0 6px #ef4444;"></span> P1 Immediate Life Threat (Pulsing)</div>
+          <div class="legend-item"><span class="legend-dot" style="background:#f59e0b;"></span> P2 High Urgency Hazard</div>
+          <div class="legend-item"><span class="legend-dot" style="background:#eab308;"></span> P3 Elevated Concern</div>
+          <div class="legend-item"><span class="legend-dot" style="background:#10b981;"></span> Active Rescue Team (NDRF/SDRF/IAF)</div>
+          <div class="legend-item"><span style="color:#0284c7;font-weight:bold;">━</span> Mandakini & Alaknanda Torrents</div>
+        </div>
+      </div>
+
+      <div class="map-sidebar">
+        <div class="section-label">🗺️ Himalayan Disaster Sector</div>
+        <div style="font-size:0.8rem;color:var(--text-muted);line-height:1.4;">
+          Mandakini & Chamoli Valleys, Uttarakhand.<br>
+          Terrain Elevation: 1,400m - 3,580m ASL.<br>
+          Terrestrial mobile networks collapsed. Satellite short-burst data operating over NavIC & GSAT-7A.
+        </div>
+        <div class="section-label" style="margin-top:1rem;">📌 Instructions</div>
+        <div style="font-size:0.78rem;color:var(--text-dim);line-height:1.4;">
+          • Click and drag anywhere on canvas to pan across the valley.<br>
+          • Use mouse wheel or buttons to zoom.<br>
+          • Hover over any incident pin or rescue unit to inspect live telemetry.<br>
+          • Click any incident pin to open full triage drawer.
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- =========================================================================
+       VIEW 3: Rescue Teams & Fleet Roster
+       ========================================================================= -->
+  <section id="view-fleet" class="view-panel">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;">
+      <h2 style="font-size:1.2rem;color:#fff;">Operational Field Rescue Teams</h2>
+      <span style="font-size:0.8rem;color:var(--text-muted);">NDRF • SDRF • IAF Helicopter Unit • ITBP • Red Cross Medical • Civil Defence</span>
+    </div>
+    <div id="teamsGridContainer" class="teams-grid">
+      <!-- Rendered by app.js -->
+    </div>
+  </section>
+
+  <!-- =========================================================================
+       VIEW 4: Satellite Communications Simulator
+       ========================================================================= -->
+  <section id="view-satellite" class="view-panel">
+    <div class="sat-simulator-layout">
+      <!-- Left: Uplink Burst Transmitter -->
+      <div class="sat-card">
+        <div class="sat-header">
+          <h3><span>📡 Tactical Satellite Burst Transmitter</span></h3>
+          <span class="status-pill" style="color:var(--sat-cyan);">LOW-BANDWIDTH TEST RIG</span>
+        </div>
+
+        <div style="font-size:0.82rem;color:var(--text-muted);margin-bottom:1rem;line-height:1.4;">
+          Simulates sending compressed emergency telemetry over extreme bandwidth constraints (1200 - 2400 bps). Encodes GPS coordinates, bitmasks, and text fragments into ~35-55 byte binary packets.
+        </div>
+
+        <div class="form-group" style="margin-bottom:0.8rem;">
+          <label class="form-label">Satellite Constellation Profile:</label>
+          <select id="satConstellationSelect" class="form-control">
+            <option value="NAVIC_DISASTER_BURST">NavIC / IRNSS (ISRO Geo-Stationary S-Band, 36,000 km, 1200 bps)</option>
+            <option value="GSAT_7A_TACTICAL">GSAT-7A Military / Disaster Transponder (ISRO Ku/C Band, 2400 bps)</option>
+            <option value="IRIDIUM_NEXT_SBD">Iridium-NEXT Short Burst Data (LEO Mesh, 780 km, 2400 bps)</option>
+          </select>
+        </div>
+
+        <div class="form-group" style="margin-bottom:0.8rem;">
+          <div style="display:flex;justify-content:space-between;">
+            <label class="form-label">Atmospheric Rain Fade Attenuation:</label>
+            <span id="satRainFadeVal" style="font-family:var(--font-mono);font-size:0.8rem;color:#f59e0b;">3.5 dB</span>
+          </div>
+          <input type="range" id="satRainFadeSlider" min="0" max="10" step="0.5" value="3.5" style="width:100%;">
+          <div style="display:flex;justify-content:space-between;font-size:0.7rem;color:var(--text-dim);">
+            <span>0 dB (Clear Sky)</span>
+            <span>5 dB (Heavy Rain)</span>
+            <span>10 dB (Cloudburst Fade)</span>
+          </div>
+        </div>
+
+        <div style="margin-bottom:0.8rem;">
+          <label class="checkbox-item">
+            <input type="checkbox" id="satForceLossCheck">
+            <span>Simulate Packet Loss to test ARQ automatic retransmission loop</span>
+          </label>
+        </div>
+
+        <div class="form-group" style="margin-bottom:0.8rem;">
+          <label class="form-label">Emergency Payload Text:</label>
+          <textarea id="satBurstMsgInput" class="form-control" style="min-height:90px;" placeholder="e.g. Kedarnath ridge: 6 pilgrims trapped on rock ledge in rising torrent. Need immediate winch helicopter.">Mandakini surge washed over Sonprayag causeway. 9 pilgrims trapped on bus roof, water level 2.5m. 1 infant and elderly couple. Immediate air winch needed!</textarea>
+        </div>
+
+        <!-- Telemetry preview gauges -->
+        <div class="telemetry-gauge-grid">
+          <div class="gauge-box">
+            <div class="gauge-label">Raw Size</div>
+            <div id="gaugeRawBytes" class="gauge-val">280 B</div>
+          </div>
+          <div class="gauge-box">
+            <div class="gauge-label">Binary Burst</div>
+            <div id="gaugeCompBytes" class="gauge-val" style="color:var(--sat-emerald);">48 B</div>
+          </div>
+          <div class="gauge-box">
+            <div class="gauge-label">Reduction</div>
+            <div id="gaugeCompPct" class="gauge-val" style="color:#10b981;">83%</div>
+          </div>
+        </div>
+
+        <div style="margin-bottom:0.8rem;">
+          <div style="display:flex;justify-content:space-between;font-size:0.72rem;color:var(--text-muted);">
+            <span>Bandwidth Compression Ratio:</span>
+            <span>Huffman + Struct Bitfield Packing</span>
+          </div>
+          <div class="compression-meter-wrapper">
+            <div id="compMeterFill" class="compression-meter-fill"></div>
+          </div>
+        </div>
+
+        <button id="btnSatTransmitBurst" class="btn-primary" style="padding:0.75rem;">
+          Transmit Satellite Burst Packet 📡
+        </button>
+      </div>
+
+      <!-- Right: Hex Dump & Telemetry Output -->
+      <div class="sat-card">
+        <div class="sat-header">
+          <h3><span>🖥️ Ground Station Packet Terminal</span></h3>
+          <span class="status-pill" style="font-family:var(--font-mono);">HEX DECODER ACTIVE</span>
+        </div>
+
+        <div style="font-size:0.75rem;color:var(--text-dim);margin-bottom:0.5rem;">
+          Notice: [SIMULATED SATELLITE TRANSMISSION - PACKET METRICS SYNTHESIZED FOR OFFLINE NODE]
+        </div>
+
+        <pre id="satHexDumpTerminal" class="hex-dump-terminal">Ready to receive satellite burst transmission.
+Select constellation, configure rain fade, and click Transmit to inspect binary byte stream.</pre>
+
+        <div class="section-label" style="margin-top:1rem;">📡 Constellation Link Telemetry</div>
+        <div class="math-grid" style="margin-top:0.5rem;">
+          <div class="math-stat">
+            <div class="math-stat-label">Estimated SNR</div>
+            <div id="gaugeSnr" class="math-stat-val" style="color:#38bdf8;">14.2 dB</div>
+          </div>
+          <div class="math-stat">
+            <div class="math-stat-label">Link Margin</div>
+            <div id="gaugeMargin" class="math-stat-val" style="color:#10b981;">6.4 dB</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Recent transmissions table -->
+    <div class="sat-card" style="margin-top:1.5rem;">
+      <h3 style="font-size:1rem;color:#fff;margin-bottom:0.75rem;">Recent Satellite Burst Transmissions</h3>
+      <table style="width:100%;border-collapse:collapse;font-size:0.8rem;">
+        <thead>
+          <tr style="border-bottom:1px solid var(--border-color);text-align:left;color:var(--text-dim);">
+            <th style="padding:0.5rem;">Packet ID</th>
+            <th>Constellation</th>
+            <th>Payload Ratio</th>
+            <th>Compression</th>
+            <th>SNR</th>
+            <th>Latency</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody id="satRecentPacketsBody">
+          <!-- Populated by satellite.js -->
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- =========================================================================
+       VIEW 5: Disaster Analytics & Decision Support
+       ========================================================================= -->
+  <section id="view-analytics" class="view-panel">
+    <!-- Humanitarian KPI Cards -->
+    <div class="kpi-bar" style="margin-bottom:1.5rem;border-radius:8px;border:1px solid var(--border-color);">
+      <div class="kpi-card crit">
+        <div>
+          <div class="kpi-label">Total Trapped Victims</div>
+          <div id="kpiTotalTrapped" class="kpi-value" style="color:var(--p1-crit);">0</div>
+        </div>
+      </div>
+      <div class="kpi-card amber">
+        <div>
+          <div class="kpi-label">Injured Persons</div>
+          <div id="kpiTotalInjured" class="kpi-value" style="color:var(--p2-high);">0</div>
+        </div>
+      </div>
+      <div class="kpi-card emerald">
+        <div>
+          <div class="kpi-label">Recorded Fatalities</div>
+          <div id="kpiTotalFatalities" class="kpi-value" style="color:#94a3b8;">0</div>
+        </div>
+      </div>
+      <div class="kpi-card cyan">
+        <div>
+          <div class="kpi-label">Reports with Unverified/NULL Count</div>
+          <div id="kpiUnknownTrapped" class="kpi-value" style="color:var(--sat-cyan);">0</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Analytics Charts Grid -->
+    <div class="analytics-grid">
+      <div class="analytics-card">
+        <div class="section-label">📊 Priority Triage Distribution</div>
+        <div style="font-size:0.75rem;color:var(--text-dim);margin-bottom:0.5rem;">
+          Distribution of incidents triaged by the mathematical risk scoring formula
+        </div>
+        <canvas id="chartPriorityCanvas" class="chart-canvas"></canvas>
+      </div>
+
+      <div class="analytics-card">
+        <div class="section-label">🌪️ Disaster Hazard Category Breakdown</div>
+        <div style="font-size:0.75rem;color:var(--text-dim);margin-bottom:0.5rem;">
+          Incidents classified by AI & local NLP disaster classifier
+        </div>
+        <canvas id="chartCategoryCanvas" class="chart-canvas"></canvas>
+      </div>
+
+      <div class="analytics-card">
+        <div class="section-label">⚡ Operational Triage Funnel</div>
+        <div style="font-size:0.75rem;color:var(--text-dim);margin-bottom:0.5rem;">
+          Status progression from Intake ➔ Dispatch ➔ Field Action ➔ Resolved
+        </div>
+        <canvas id="chartStatusCanvas" class="chart-canvas"></canvas>
+      </div>
+
+      <div class="analytics-card">
+        <div class="section-label">🛰️ Satellite Comms Performance Matrix</div>
+        <div style="font-size:0.75rem;color:var(--text-dim);margin-bottom:0.75rem;">
+          Bandwidth efficiency and latency metrics across satellite passes
+        </div>
+        <div class="math-grid">
+          <div class="math-stat">
+            <div class="math-stat-label">Total Packets</div>
+            <div id="kpiSatPackets" class="math-stat-val">0</div>
+          </div>
+          <div class="math-stat">
+            <div class="math-stat-label">Avg Compression</div>
+            <div id="kpiSatCompression" class="math-stat-val" style="color:#10b981;">0%</div>
+          </div>
+          <div class="math-stat">
+            <div class="math-stat-label">Avg Uplink Latency</div>
+            <div id="kpiSatLatency" class="math-stat-val">0 ms</div>
+          </div>
+          <div class="math-stat">
+            <div class="math-stat-label">ARQ Retransmit Recoveries</div>
+            <div id="kpiSatLossRecovered" class="math-stat-val">0</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- =========================================================================
+       VIEW 6: Citizen / Field Responder SOS Intake Form
+       ========================================================================= -->
+  <section id="view-sos" class="view-panel">
+    <div class="sos-form-wrapper">
+      <div style="border-bottom:1px solid var(--border-color);padding-bottom:0.75rem;margin-bottom:1.25rem;">
+        <h2 style="font-size:1.2rem;color:#fff;">Emergency Triage Intake (SOS Portal)</h2>
+        <p style="font-size:0.8rem;color:var(--text-muted);margin-top:0.25rem;">
+          Submits emergency message directly into the Akash Setu AI triage & deduplication pipeline. Original message is preserved verbatim.
+        </p>
+      </div>
+
+      <form id="sosIntakeForm">
+        <div class="form-group full-width" style="margin-bottom:1rem;">
+          <label class="form-label">Emergency Message Description (Preserved Verbatim) *</label>
+          <textarea id="sosRawText" class="form-control" required placeholder="Describe the disaster emergency in detail: location, trapped people, water level, medical needs... e.g. Flash flood washed away bridge at Phata, 12 villagers trapped on roof, water rising fast..."></textarea>
+        </div>
+
+        <div class="form-grid">
+          <div class="form-group">
+            <label class="form-label">Sector / Landmark Name</label>
+            <input type="text" id="sosLocationName" class="form-control" placeholder="e.g. Gaurikund Base, Rudraprayag">
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Transmission Channel</label>
+            <select id="sosChannel" class="form-control">
+              <option value="WEB">Web Emergency Portal</option>
+              <option value="SATELLITE_BURST">Satellite Burst Terminal</option>
+              <option value="SMS">Emergency SMS Gateway</option>
+              <option value="HF_RADIO">HF / VHF Field Radio Relay</option>
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Latitude (GPS WGS84)</label>
+            <input type="number" id="sosLatitude" step="0.0001" class="form-control" value="30.6315">
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Longitude (GPS WGS84)</label>
+            <input type="number" id="sosLongitude" step="0.0001" class="form-control" value="79.0028">
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Trapped Persons Count (Leave blank if unknown)</label>
+            <input type="number" id="sosTrappedCount" min="0" class="form-control" placeholder="Blank = Unknown / NULL (Preserved)">
+            <span style="font-size:0.7rem;color:var(--text-dim);">Strict invariant: Leaving blank preserves NULL without assuming 0.</span>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Injured Persons Count (Leave blank if unknown)</label>
+            <input type="number" id="sosInjuredCount" min="0" class="form-control" placeholder="Blank = Unknown / NULL">
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Flood Water Depth (Meters, if applicable)</label>
+            <input type="number" id="sosWaterLevel" step="0.1" min="0" class="form-control" placeholder="e.g. 1.8">
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Sender Contact / Phone / Radio Call-Sign</label>
+            <input type="text" id="sosContact" class="form-control" placeholder="e.g. +91-98765-43210 or Unit-4">
+          </div>
+        </div>
+
+        <div class="form-group full-width" style="margin-bottom:1.25rem;">
+          <label class="form-label">High-Risk Vulnerabilities Present:</label>
+          <div class="checkbox-group">
+            <label class="checkbox-item"><input type="checkbox" name="sosVuln" value="INFANTS_CHILDREN"> Infants / Small Children</label>
+            <label class="checkbox-item"><input type="checkbox" name="sosVuln" value="PREGNANT_WOMEN"> Pregnant Women</label>
+            <label class="checkbox-item"><input type="checkbox" name="sosVuln" value="ELDERLY"> Elderly / Mobility Impaired</label>
+            <label class="checkbox-item"><input type="checkbox" name="sosVuln" value="CRITICAL_MEDICAL"> Oxygen / Dialysis / Critical Medical</label>
+            <label class="checkbox-item"><input type="checkbox" name="sosVuln" value="HYPOTHERMIA_EXPOSURE"> Freezing / Hypothermia Risk</label>
+          </div>
+        </div>
+
+        <button type="submit" id="btnSubmitSOS" class="btn-primary" style="padding:0.8rem;">
+          Submit Emergency Triage Report 🚨
+        </button>
+      </form>
+    </div>
+  </section>
+
+  <!-- Toast Notification Container -->
+  <div id="toastContainer" class="toast-container"></div>
+
+  <!-- Scripts -->
+  <script src="/static/js/map.js"></script>
+  <script src="/static/js/analytics.js"></script>
+  <script src="/static/js/satellite.js"></script>
+  <script src="/static/js/app.js"></script>
+</body>
+</html>

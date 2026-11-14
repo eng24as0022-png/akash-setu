@@ -1,0 +1,42 @@
+{
+  "system": {
+    "app_name": "Akash Setu (आकाश सेतु)",
+    "version": "2026.3.0",
+    "environment": "production-tactical",
+    "port": 8080,
+    "host": "127.0.0.1",
+    "db_filename": "akash_setu.db"
+  },
+  "disaster_zone": {
+    "sector_name": "Mandakini Valley & Chamoli Sector",
+    "state": "Uttarakhand",
+    "country": "India",
+    "center_latitude": 30.50,
+    "center_longitude": 79.15,
+    "default_zoom": 28.0
+  },
+  "deduplication": {
+    "geo_threshold_km": 3.0,
+    "time_threshold_hours": 6.0,
+    "auto_merge_similarity_threshold": 0.72,
+    "potential_flag_threshold": 0.48
+  },
+  "risk_engine": {
+    "algorithm_version": "AS-RS-2026.3-EXPERIMENTAL",
+    "max_score": 100.0,
+    "min_score": 5.0,
+    "provisional_unspecified_casualty_weight": 12.0,
+    "provisional_unspecified_injured_weight": 4.0,
+    "p1_threshold": 80.0,
+    "p2_threshold": 60.0,
+    "p3_threshold": 40.0
+  },
+  "satellite_simulator": {
+    "default_constellation": "NAVIC_DISASTER_BURST",
+    "uplink_baud_rate": 1200,
+    "nominal_snr_db": 15.5,
+    "nominal_link_margin_db": 7.2,
+    "simulated_rain_fade_default_db": 3.5,
+    "orbital_base_latency_ms": 520
+  }
+}

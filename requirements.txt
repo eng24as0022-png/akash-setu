@@ -1,0 +1,18 @@
+# ==============================================================================
+# Akash Setu (आकाश सेतु) - Dependencies
+# ==============================================================================
+#
+# CORE DESIGN PRINCIPLE:
+# Akash Setu is specifically engineered for air-gapped disaster operations centers
+# and intermittent satellite command nodes. The entire core application, database,
+# classifier, deduplicator, risk engine, and web server run on the Python standard
+# library (Python 3.10+) with ZERO external pip package dependencies required!
+#
+# Simply run:
+#   python server.py
+#
+# OPTIONAL PACKAGES (for optional cloud LLM or alternative ASGI deployment):
+# ------------------------------------------------------------------------------
+# google-generativeai>=0.5.0   # Optional: If using external Gemini cloud API
+# requests>=2.31.0             # Optional: Alternative HTTP client utility
+# uvicorn>=0.29.0              # Optional: ASGI runner if porting from standard HTTP
