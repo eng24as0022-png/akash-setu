@@ -9,3 +9,7 @@ services:
         value: 10000
       - key: HOST
         value: 0.0.0.0
+      - key: DEMO_PASSWORD
+        value: AkashSetu@2026
+      - key: COMMANDER_PASSCODE
+        value: NDRF-2026-RESCUE
