@@ -516,11 +516,24 @@ class AkashSetuApp {
             return;
         }
 
+        let hasRenderedResolvedSeparator = false;
         container.innerHTML = this.incidents.map(inc => {
             const isSelected = inc.id === this.selectedIncidentId ? "selected" : "";
             const isRescued = inc.status === "RESOLVED" || inc.status === "CLOSED";
             const priorityClass = inc.priority_level.toLowerCase();
             const cardResolvedClass = isRescued ? "resolved-card" : "";
+
+            let separatorHtml = "";
+            if (isRescued && !hasRenderedResolvedSeparator) {
+                hasRenderedResolvedSeparator = true;
+                separatorHtml = `
+                    <div style="display:flex;align-items:center;gap:0.75rem;margin:1.25rem 0 0.75rem 0;color:#10b981;font-size:0.78rem;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;">
+                        <span style="flex:1;height:1px;background:#10b981;opacity:0.4;"></span>
+                        <span>🔻 Rescued Incidents (Moved Down Below Active Emergencies)</span>
+                        <span style="flex:1;height:1px;background:#10b981;opacity:0.4;"></span>
+                    </div>
+                `;
+            }
 
             // Strict Null Preservation in display
             const trappedText = inc.trapped_count !== null ? `${inc.trapped_count} Trapped` : "Trapped Count Unconfirmed (NULL)";
@@ -531,13 +544,13 @@ class AkashSetuApp {
 
             const dupBadge = inc.duplicate_count > 0 ? `<span class="tag-infra">${inc.duplicate_count} DUPLICATES LINKED</span>` : "";
 
-            return `
-                <div class="incident-card ${priorityClass} ${isSelected} ${cardResolvedClass}" onclick="app.selectIncident(${inc.id})" style="${isRescued ? 'opacity:0.65;border-left:4px solid #10b981;' : ''}">
+            return separatorHtml + `
+                <div class="incident-card ${priorityClass} ${isSelected} ${cardResolvedClass}" onclick="app.selectIncident(${inc.id})" style="${isRescued ? 'opacity:0.7;border-left:4px solid #10b981;background:rgba(16,185,129,0.06);' : ''}">
                     <div class="card-top">
                         <span class="card-code">${inc.incident_code}</span>
                         <div class="card-badges">
                             <span class="priority-pill ${priorityClass}">${inc.priority_level}</span>
-                            <span class="status-pill" style="${isRescued ? 'color:#10b981;border-color:#10b981;background:rgba(16,185,129,0.1);font-weight:700;' : ''}">${isRescued ? 'RESCUED / SAFE ✅' : inc.status}</span>
+                            <span class="status-pill" style="${isRescued ? 'color:#10b981;border-color:#10b981;background:rgba(16,185,129,0.15);font-weight:700;' : ''}">${isRescued ? 'RESCUED / SAFE ✅' : inc.status}</span>
                         </div>
                     </div>
                     <div class="card-title">${this.escapeHtml(inc.title)}</div>
@@ -550,11 +563,11 @@ class AkashSetuApp {
                         <div class="card-tags">
                             ${vulnTags}
                             ${dupBadge}
-                            ${isRescued ? '<span class="tag-infra" style="color:#10b981;border-color:#10b981;">MOVED DOWN (RESCUED)</span>' : ''}
+                            ${isRescued ? '<span class="tag-infra" style="color:#10b981;border-color:#10b981;font-weight:700;">MOVED DOWN (RESCUED)</span>' : ''}
                         </div>
                         <div style="display:flex;gap:0.4rem;align-items:center;">
                             ${!isRescued ? `
-                                <button class="btn-secondary" style="font-size:0.68rem;padding:0.2rem 0.5rem;color:#10b981;border-color:rgba(16,185,129,0.4);" onclick="app.markRescued(${inc.id}, event)" title="Mark as successfully rescued and move down">
+                                <button class="btn-secondary" style="font-size:0.72rem;padding:0.25rem 0.55rem;color:#10b981;border:1px solid #10b981;background:rgba(16,185,129,0.1);font-weight:700;border-radius:4px;cursor:pointer;" onclick="app.markRescued(${inc.id}, event)" title="Mark as successfully rescued and move down">
                                     ✅ Rescued
                                 </button>
                             ` : ''}
@@ -631,6 +644,38 @@ class AkashSetuApp {
                 <div style="font-size:0.8rem;color:var(--text-muted);margin-top:0.3rem;">
                     📍 ${this.escapeHtml(inc.location_name)}, ${this.escapeHtml(inc.district)} [${inc.latitude.toFixed(4)}°N, ${inc.longitude.toFixed(4)}°E]
                 </div>
+            </div>
+
+            <!-- ⚡ PROMINENT RESCUE & RESOLUTION BAR (TOP OF DRAWER) -->
+            <div style="background:linear-gradient(135deg, rgba(16,185,129,0.15) 0%, rgba(15,23,42,0.95) 100%);border:1px solid #10b981;border-radius:8px;padding:0.85rem;margin-bottom:1rem;box-shadow:0 4px 16px rgba(0,0,0,0.3);">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.6rem;">
+                    <span style="font-size:0.85rem;font-weight:700;color:#fff;">⚡ Operational Rescue Action:</span>
+                    <span class="status-pill" style="font-size:0.75rem;color:${inc.status === 'RESOLVED' ? '#10b981' : '#f59e0b'};border-color:${inc.status === 'RESOLVED' ? '#10b981' : 'rgba(245,158,11,0.4)'};">CURRENT: ${inc.status}</span>
+                </div>
+                ${inc.status !== 'RESOLVED' && inc.status !== 'CLOSED' ? `
+                    <button class="btn-primary" style="width:100%;background:linear-gradient(135deg, #059669 0%, #10b981 100%);border:none;padding:0.75rem;font-size:0.95rem;font-weight:800;display:flex;justify-content:center;align-items:center;gap:0.5rem;box-shadow:0 0 15px rgba(16,185,129,0.35);cursor:pointer;" onclick="app.updateSelectedStatus(${inc.id}, 'RESOLVED')">
+                        ✅ Mark Rescue Completed / Resolved (Moves Down)
+                    </button>
+                    <div style="display:flex;gap:0.5rem;align-items:center;margin-top:0.65rem;">
+                        <label style="font-size:0.75rem;color:var(--text-muted);white-space:nowrap;">Change Status:</label>
+                        <select class="filter-select" style="flex:1;" onchange="app.updateSelectedStatus(${inc.id}, this.value)">
+                            <option value="PENDING_TRIAGE" ${inc.status === 'PENDING_TRIAGE' ? 'selected' : ''}>PENDING TRIAGE</option>
+                            <option value="TRIAGED" ${inc.status === 'TRIAGED' ? 'selected' : ''}>TRIAGED</option>
+                            <option value="DISPATCHED" ${inc.status === 'DISPATCHED' ? 'selected' : ''}>DISPATCHED</option>
+                            <option value="IN_PROGRESS" ${inc.status === 'IN_PROGRESS' ? 'selected' : ''}>IN PROGRESS / ON SITE</option>
+                            <option value="RESOLVED">RESOLVED / SAFE (MOVES DOWN)</option>
+                        </select>
+                    </div>
+                ` : `
+                    <div style="padding:0.7rem;background:rgba(16,185,129,0.2);border:1px solid #10b981;border-radius:6px;color:#a7f3d0;font-size:0.85rem;text-align:center;font-weight:700;">
+                        ✅ Rescued & Resolved: This incident has been successfully resolved and moved down to the bottom of the queue.
+                    </div>
+                    <div style="margin-top:0.5rem;text-align:center;">
+                        <button class="btn-secondary" style="font-size:0.72rem;padding:0.3rem 0.6rem;color:#38bdf8;border-color:rgba(56,189,248,0.4);" onclick="app.updateSelectedStatus(${inc.id}, 'PENDING_TRIAGE')">
+                            ↺ Reopen Incident (Move Back Up to Active)
+                        </button>
+                    </div>
+                `}
             </div>
 
             <!-- 1. Preserved Raw Emergency Text Verbatim -->
