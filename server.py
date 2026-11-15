@@ -498,18 +498,25 @@ class AkashSetuRequestHandler(BaseHTTPRequestHandler):
                 })
                 return
 
-            # Route: Update incident status (PROTECTED)
+            # Route: Update incident status (PROTECTED — rescue teams may mark RESOLVED)
             if path.startswith("/api/incidents/") and path.endswith("/status"):
-                if not self.is_authenticated():
-                    self._send_error("Authentication Required: Only authorized disaster coordinators can modify incident status.", status=401)
-                    return
-
                 parts = path.strip("/").split("/")
                 inc_id = int(parts[2])
                 body = self._read_json_body()
                 new_status = body.get("status")
                 author = body.get("author", "Rescue Coordinator")
                 note = body.get("note", "Operational status updated")
+
+                # Allow rescue teams (even unauthenticated) to mark as RESOLVED/CLOSED
+                # All other status changes still require commander authentication
+                if new_status not in ("RESOLVED", "CLOSED"):
+                    if not self.is_authenticated():
+                        self._send_error("Authentication Required: Only authorized disaster coordinators can modify incident status.", status=401)
+                        return
+                else:
+                    # Auto-tag the author when a field rescue team marks it
+                    if not self.is_authenticated():
+                        author = body.get("author", "Field Rescue Team")
 
                 success = update_incident_status(inc_id, new_status, author=author, note=note)
                 if success:

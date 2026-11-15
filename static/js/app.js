@@ -799,7 +799,23 @@ class AkashSetuApp {
 
     async markRescued(incidentId, event) {
         if (event) event.stopPropagation();
-        await this.updateSelectedStatus(incidentId, "RESOLVED");
+        // Rescue teams can mark as RESOLVED without commander login
+        try {
+            const headers = this.authToken ? this.getAuthHeaders() : {"Content-Type": "application/json"};
+            const resp = await fetch(`/api/incidents/${incidentId}/status`, {
+                method: "POST",
+                headers: headers,
+                body: JSON.stringify({ status: "RESOLVED", author: this.authToken ? "Rescue Coordinator" : "Field Rescue Team", note: "Rescue completed — marked safe by field team" })
+            });
+            const data = await resp.json();
+            if (!resp.ok) throw new Error(data.error);
+
+            this.showToast("✅ Incident marked as Rescued / Safe — moved down in queue", "success");
+            this.refreshAll();
+            if (this.selectedIncidentId === incidentId) this.selectIncident(incidentId);
+        } catch (err) {
+            this.showToast(`Rescue update failed: ${err.message}`, "error");
+        }
     }
 
     async dispatchTeamToSelected(incidentId) {
@@ -831,17 +847,22 @@ class AkashSetuApp {
     }
 
     async updateSelectedStatus(incidentId, newStatus) {
-        if (!this.authToken) {
+        // RESOLVED and CLOSED can be done by rescue teams without login
+        const isRescueAction = (newStatus === "RESOLVED" || newStatus === "CLOSED");
+
+        if (!isRescueAction && !this.authToken) {
             this.showToast("🔒 Commander Login Required: Please authenticate to change incident operational status.", "error");
             document.getElementById("authModal").style.display = "flex";
             return;
         }
 
         try {
+            const headers = this.authToken ? this.getAuthHeaders() : {"Content-Type": "application/json"};
+            const author = this.authToken ? "Disaster Operations Lead" : "Field Rescue Team";
             const resp = await fetch(`/api/incidents/${incidentId}/status`, {
                 method: "POST",
-                headers: this.getAuthHeaders(),
-                body: JSON.stringify({ status: newStatus, author: "Disaster Operations Lead" })
+                headers: headers,
+                body: JSON.stringify({ status: newStatus, author: author })
             });
             const data = await resp.json();
             if (!resp.ok) throw new Error(data.error);
