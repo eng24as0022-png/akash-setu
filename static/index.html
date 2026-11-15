@@ -563,7 +563,8 @@ Select constellation, configure rain fade, and click Transmit to inspect binary 
         <button id="btnCloseAuthModal" style="background:none;border:none;color:var(--text-muted);font-size:1.3rem;cursor:pointer;">✕</button>
       </div>
       <p style="font-size:0.83rem;color:var(--text-muted);margin-bottom:1.25rem;line-height:1.4;">
-        Access restricted to authorized rescue response personnel. Please sign in with your approved email address and team password.
+        <strong style="color:#10b981;">Rescue Team</strong> — Enter your approved email + password for <strong>full monitoring access</strong> to all tabs.<br>
+        <strong style="color:#f59e0b;">Commander</strong> — Enter only the passcode (no email) for <strong>operational view</strong> (triage, map, analytics).
       </p>
 
       <div id="loginErrorAlert" style="display:none;background:rgba(239,68,68,0.15);border:1px solid var(--p1-crit);color:#fca5a5;padding:0.75rem;border-radius:6px;font-size:0.8rem;margin-bottom:1rem;"></div>
@@ -580,11 +581,11 @@ Select constellation, configure rain fade, and click Transmit to inspect binary 
         </div>
 
         <button id="btnModalSubmitAuth" class="btn-primary" style="padding:0.8rem;font-weight:700;font-size:1rem;margin-top:0.25rem;">
-          Authenticate & Open Rescue Dashboard 🛡️
+          Sign In 🛡️
         </button>
 
         <div style="border-top:1px solid var(--border-color);padding-top:0.85rem;margin-top:0.25rem;">
-          <div style="font-size:0.72rem;color:var(--text-dim);margin-bottom:0.35rem;font-weight:600;text-transform:uppercase;">Authorized Demonstration Accounts:</div>
+          <div style="font-size:0.72rem;color:var(--text-dim);margin-bottom:0.35rem;font-weight:600;text-transform:uppercase;">🟢 Rescue Team Accounts (Full Access — All Tabs):</div>
           <ul style="font-size:0.72rem;color:var(--text-muted);padding-left:1.2rem;line-height:1.5;">
             <li><code style="color:#38bdf8;">eng24as0018@dsu.edu.in</code></li>
             <li><code style="color:#38bdf8;">eng24as0022@dsu.edu.in</code></li>
@@ -593,6 +594,9 @@ Select constellation, configure rain fade, and click Transmit to inspect binary 
           </ul>
           <div style="font-size:0.72rem;color:var(--text-dim);margin-top:0.5rem;">
             Shared Demo Password: <code style="color:#10b981;">AkashSetu@2026</code>
+          </div>
+          <div style="font-size:0.72rem;color:#f59e0b;margin-top:0.65rem;border-top:1px solid rgba(245,158,11,0.2);padding-top:0.5rem;">
+            🟠 <strong>Commander Login:</strong> Leave email blank, enter only passcode <code style="color:#f59e0b;">NDRF-2026-RESCUE</code> for operational view.
           </div>
         </div>
       </div>

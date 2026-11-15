@@ -14,6 +14,7 @@ class AkashSetuApp {
         this.activeTab = "triage";
         this.authToken = localStorage.getItem("akash_commander_token");
         this.authEmail = localStorage.getItem("akash_commander_email") || "eng24as0022@dsu.edu.in";
+        this.authRole = localStorage.getItem("akash_user_role") || "PUBLIC";  // PUBLIC | MISSION_COMMANDER | RESCUE_TEAM
 
         this.initHeroButtons();
         this.initTabs();
@@ -30,6 +31,14 @@ class AkashSetuApp {
         // Initial Data Load
         this.refreshAll();
         this.updateAuthUI();
+        this.applyRoleVisibility();
+
+        // Default tab based on role
+        if (!this.authToken || this.authRole === "PUBLIC") {
+            this.switchTab("sos");
+        } else {
+            this.switchTab("triage");
+        }
 
         // Auto-refresh poll every 7 seconds for real-time mission status
         setInterval(() => this.backgroundPoll(), 7000);
@@ -56,7 +65,8 @@ class AkashSetuApp {
             btnLogin.addEventListener("click", () => {
                 if (this.authToken) {
                     this.switchTab("triage");
-                    this.showToast(`Active Rescue Commander session: ${this.authEmail}`, "success");
+                    const roleLabel = this.authRole === "RESCUE_TEAM" ? "Rescue Team" : "Commander";
+                    this.showToast(`Active ${roleLabel} session: ${this.authEmail}`, "success");
                 } else {
                     const modal = document.getElementById("authModal");
                     if (modal) modal.style.display = "flex";
@@ -162,14 +172,24 @@ class AkashSetuApp {
 
             this.authToken = data.token;
             this.authEmail = data.email || email;
+            this.authRole = data.role || "MISSION_COMMANDER";
             localStorage.setItem("akash_commander_token", data.token);
             localStorage.setItem("akash_commander_email", this.authEmail);
+            localStorage.setItem("akash_user_role", this.authRole);
 
             const modal = document.getElementById("authModal");
             if (modal) modal.style.display = "none";
 
             this.updateAuthUI();
-            this.showToast(`🛡️ Rescue Commander Authorized: ${this.authEmail}`, "success");
+            this.applyRoleVisibility();
+            this.showToast(`🛡️ Authenticated: ${this.authEmail} (${this.authRole === 'RESCUE_TEAM' ? 'Rescue Team — Full Access' : 'Commander — Operational View'})`, "success");
+
+            // Navigate to appropriate default tab for the role
+            if (this.authRole === "RESCUE_TEAM") {
+                this.switchTab("triage");
+            } else {
+                this.switchTab("triage");
+            }
 
             this.refreshAll();
             if (this.selectedIncidentId) {
@@ -183,10 +203,14 @@ class AkashSetuApp {
     logoutCommander() {
         this.authToken = null;
         this.authEmail = null;
+        this.authRole = "PUBLIC";
         localStorage.removeItem("akash_commander_token");
         localStorage.removeItem("akash_commander_email");
+        localStorage.removeItem("akash_user_role");
         this.updateAuthUI();
-        this.showToast("Logged out of Rescue Team Mode. Public read-only view active.", "info");
+        this.applyRoleVisibility();
+        this.switchTab("sos");
+        this.showToast("Logged out. Public view active — only emergency reporting available.", "info");
         this.refreshAll();
         if (this.selectedIncidentId) {
             this.selectIncident(this.selectedIncidentId);
@@ -201,9 +225,10 @@ class AkashSetuApp {
 
         if (btnAuth) {
             if (this.authToken) {
-                btnAuth.innerHTML = `🛡️ ${this.authEmail || 'Commander'} <span style='font-size:0.7rem;color:#fca5a5;'>[Logout]</span>`;
-                btnAuth.style.borderColor = "#10b981";
-                btnAuth.style.color = "#10b981";
+                const roleLabel = this.authRole === "RESCUE_TEAM" ? "Rescue Team" : "Commander";
+                btnAuth.innerHTML = `🛡️ ${roleLabel}: ${this.authEmail || 'Authenticated'} <span style='font-size:0.7rem;color:#fca5a5;'>[Logout]</span>`;
+                btnAuth.style.borderColor = this.authRole === "RESCUE_TEAM" ? "#10b981" : "#f59e0b";
+                btnAuth.style.color = this.authRole === "RESCUE_TEAM" ? "#10b981" : "#f59e0b";
             } else {
                 btnAuth.innerHTML = "🛡️ Rescue Team Login";
                 btnAuth.style.borderColor = "#38bdf8";
@@ -223,6 +248,57 @@ class AkashSetuApp {
                 statusBadge.textContent = "🔒 Authentication Required";
                 statusBadge.style.color = "var(--p2-high)";
             }
+        }
+    }
+
+    /**
+     * Role-Based Access Control — Tab & Section Visibility
+     *
+     * PUBLIC (no login):     Only SOS form + hero banner
+     * MISSION_COMMANDER:     Triage Queue, Map, Analytics, SOS — NO fleet, NO satellite
+     * RESCUE_TEAM:           ALL tabs — full monitoring access
+     */
+    applyRoleVisibility() {
+        const role = this.authRole || "PUBLIC";
+
+        // Define which tabs each role can see
+        const tabAccess = {
+            "PUBLIC":             ["sos"],
+            "MISSION_COMMANDER":  ["triage", "map", "analytics", "sos"],
+            "RESCUE_TEAM":        ["triage", "map", "fleet", "satellite", "analytics", "sos"]
+        };
+
+        const allowedTabs = tabAccess[role] || tabAccess["PUBLIC"];
+
+        // Show/hide tab buttons
+        document.querySelectorAll(".nav-tab-btn").forEach(btn => {
+            const view = btn.dataset.view;
+            btn.style.display = allowedTabs.includes(view) ? "" : "none";
+        });
+
+        // Show/hide view panels that are not allowed
+        document.querySelectorAll(".view-panel").forEach(panel => {
+            const viewName = panel.id.replace("view-", "");
+            if (!allowedTabs.includes(viewName)) {
+                panel.classList.remove("active");
+            }
+        });
+
+        // Show/hide KPI bar — only commanders and rescue teams
+        const kpiBar = document.querySelector(".kpi-bar");
+        if (kpiBar) {
+            kpiBar.style.display = (role === "PUBLIC") ? "none" : "";
+        }
+
+        // Show/hide Reset Scenario button — only rescue teams
+        const btnReset = document.getElementById("btnResetDemo");
+        if (btnReset) {
+            btnReset.style.display = (role === "RESCUE_TEAM") ? "" : "none";
+        }
+
+        // If currently on a tab the user can't see, switch to allowed tab
+        if (!allowedTabs.includes(this.activeTab)) {
+            this.switchTab(allowedTabs[0]);
         }
     }
 

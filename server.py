@@ -163,6 +163,7 @@ class AkashSetuRequestHandler(BaseHTTPRequestHandler):
                 self._send_json({
                     "authenticated": session is not None,
                     "session": session,
+                    "role": session.get("role") if session else "PUBLIC",
                     "allowed_emails": ALLOWED_RESCUE_EMAILS
                 })
                 return
@@ -230,7 +231,7 @@ class AkashSetuRequestHandler(BaseHTTPRequestHandler):
                         "email": "commander@akashsetu.local",
                         "role": "MISSION_COMMANDER",
                         "agency": "NDRF / SDMA OPERATIONS COMMAND",
-                        "message": "Rescue Commander authenticated successfully."
+                        "message": "Commander authenticated — operational view enabled."
                     })
                     return
 
@@ -249,14 +250,14 @@ class AkashSetuRequestHandler(BaseHTTPRequestHandler):
                     return
 
                 token = hashlib.sha256(f"AKASH-SETU-{email}-{password}".encode()).hexdigest()[:32]
-                ACTIVE_SESSIONS[token] = {"email": email, "role": "RESCUE_COMMANDER"}
+                ACTIVE_SESSIONS[token] = {"email": email, "role": "RESCUE_TEAM"}
                 self._send_json({
                     "authenticated": True,
                     "token": token,
                     "email": email,
-                    "role": "RESCUE_COMMANDER",
-                    "agency": "NDRF / SDMA RESCUE COMMAND",
-                    "message": f"Welcome, Rescue Team Commander ({email})"
+                    "role": "RESCUE_TEAM",
+                    "agency": "NDRF / SDMA RESCUE OPERATIONS",
+                    "message": f"Welcome, Rescue Team ({email}) — full monitoring access enabled."
                 })
                 return
 
