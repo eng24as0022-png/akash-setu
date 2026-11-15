@@ -372,6 +372,53 @@ class AkashSetuApp {
         const confCard = document.getElementById("sosConfirmationCard");
         const btnAnother = document.getElementById("btnSubmitAnotherSOS");
 
+        // Helper to fill form with preset
+        const fillPreset = (name, loc, desc) => {
+            if (confCard) confCard.style.display = "none";
+            if (form) form.style.display = "block";
+            const nameEl = document.getElementById("sosPersonName");
+            const locEl = document.getElementById("sosLocationName");
+            const descEl = document.getElementById("sosDescription");
+            if (nameEl) nameEl.value = name;
+            if (locEl) locEl.value = loc;
+            if (descEl) descEl.value = desc;
+            if (descEl) descEl.focus();
+            this.showToast("⚡ Test scenario loaded. Click 'Send SOS' to submit.", "info");
+        };
+
+        const btnFlood = document.getElementById("btnPresetFlood");
+        if (btnFlood) {
+            btnFlood.addEventListener("click", () => {
+                fillPreset(
+                    "Ramesh Sharma",
+                    "Sonprayag Market Bridge Sector, Rudraprayag",
+                    "CRITICAL FLOOD EMERGENCY! Mandakini river breached bridge. 14 people trapped on building rooftop including 3 infants and 1 pregnant woman. Water level rising fast (1.4m), immediate boat rescue needed!"
+                );
+            });
+        }
+
+        const btnSlide = document.getElementById("btnPresetLandslide");
+        if (btnSlide) {
+            btnSlide.addEventListener("click", () => {
+                fillPreset(
+                    "Deepak Rawat",
+                    "Banswara Highway Pass (NH-107)",
+                    "Severe cloudburst caused massive landslide on NH-107 near Banswara. 32 passengers stranded inside pilgrim bus with hypothermia risk, heavy rocks falling."
+                );
+            });
+        }
+
+        const btnMed = document.getElementById("btnPresetMedical");
+        if (btnMed) {
+            btnMed.addEventListener("click", () => {
+                fillPreset(
+                    "Dr. Vinita Joshi",
+                    "Agastyamuni Primary Health Centre",
+                    "High flood water 1.8m entered ground floor ICU. Critical oxygen cylinders submerged, 8 elderly patients requiring ventilator evacuation."
+                );
+            });
+        }
+
         if (btnAnother) {
             btnAnother.addEventListener("click", () => {
                 if (confCard) confCard.style.display = "none";
