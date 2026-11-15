@@ -44,12 +44,33 @@ class DisasterClassifier:
                 "seismic", "quake"
             ],
             "FIRE": [
-                "fire", "blaze", "burning", "smoke", "flames", "inferno", "gas leak", "explosion",
+                "fire", "blaze", "burning", "smoke", "flames", "inferno", "forest fire",
                 "cylinder blast", "suffocating smoke"
             ],
+            "ROAD_ACCIDENT": [
+                "road accident", "car crash", "bus accident", "bus fell", "vehicle collision",
+                "overturned", "highway crash", "truck accident", "accident", "fell into gorge"
+            ],
             "MEDICAL": [
-                "cardiac", "stroke", "bleeding", "severe fracture", "oxygen", "dialysis", "amputation",
-                "hypothermia", "unconscious", "head trauma", "snakebite", "diabetic emergency", "asthma"
+                "medical emergency", "cardiac", "heart attack", "stroke", "bleeding", "severe bleeding",
+                "severe fracture", "oxygen", "dialysis", "amputation", "hypothermia", "unconscious",
+                "cannot breathe", "breathing difficulty", "head trauma", "snakebite", "diabetic emergency", "asthma"
+            ],
+            "GAS_LEAKAGE": [
+                "gas leak", "gas leakage", "cylinder leak", "toxic fumes", "chemical leak",
+                "lpg leak", "poisonous gas", "suffocating gas", "methane leak"
+            ],
+            "ELECTRICAL_HAZARD": [
+                "electrical hazard", "electric shock", "short circuit", "live wire", "high voltage line",
+                "transformer blast", "snapped power line", "electrocution", "power wire spark"
+            ],
+            "SHORTAGE": [
+                "food shortage", "water shortage", "no food", "no drinking water", "starvation",
+                "starving", "ration running out", "supplies exhausted", "need food and water"
+            ],
+            "RESCUE_REQUEST": [
+                "rescue request", "please rescue", "need evacuation", "stranded", "trapped",
+                "send rescue team", "airlift needed", "help immediately", "rescue us"
             ],
             "CYCLONE": [
                 "cyclone", "hurricane", "typhoon", "gale winds", "storm surge", "high winds",

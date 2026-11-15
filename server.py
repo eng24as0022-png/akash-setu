@@ -12,6 +12,7 @@ import json
 import mimetypes
 import urllib.parse
 import hashlib
+import datetime
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from typing import Dict, Any, Optional
 
@@ -21,7 +22,7 @@ if BASE_DIR not in sys.path:
     sys.path.insert(0, BASE_DIR)
 
 from core.db import (
-    init_db, save_raw_message, insert_incident, get_incidents,
+    init_db, get_connection, save_raw_message, insert_incident, get_incidents,
     get_incident_by_id, update_incident_status, assign_team_to_incident,
     merge_incidents, get_rescue_teams, update_team_status,
     log_satellite_transmission, get_satellite_logs, get_analytics_summary,
@@ -34,9 +35,30 @@ from core.satellite_sim import SatelliteLinkSimulator, SatellitePacketEncoder
 from core.seed_data import seed_database
 
 
-# Mission Commander Passcode (Configurable via environment variable for cloud deployment)
+import uuid
+
+# Authorized Rescue Team Credentials
+ALLOWED_RESCUE_EMAILS = [
+    "eng24as0018@dsu.edu.in",
+    "eng24as0022@dsu.edu.in",
+    "eng24as0016@dsu.edu.in",
+    "vinayvinu96636@gmail.com"
+]
+
+DEMO_PASSWORD = os.environ.get("DEMO_PASSWORD", "AkashSetu@2026")
 COMMANDER_PASSCODE = os.environ.get("COMMANDER_PASSCODE", "NDRF-2026-RESCUE")
-COMMANDER_TOKEN = hashlib.sha256(f"AKASH-SETU-{COMMANDER_PASSCODE}".encode()).hexdigest()[:32]
+
+# Session store for active tokens: token -> { "email": email, "role": role }
+ACTIVE_SESSIONS = {
+    hashlib.sha256(f"AKASH-SETU-{COMMANDER_PASSCODE}".encode()).hexdigest()[:32]: {
+        "email": "commander@akashsetu.local",
+        "role": "MISSION_COMMANDER"
+    },
+    hashlib.sha256(f"AKASH-SETU-{DEMO_PASSWORD}".encode()).hexdigest()[:32]: {
+        "email": "eng24as0022@dsu.edu.in",
+        "role": "RESCUE_TEAM"
+    }
+}
 
 # Singletons for core engines
 classifier = DisasterClassifier()
@@ -46,19 +68,25 @@ satellite_sim = SatelliteLinkSimulator()
 
 
 class AkashSetuRequestHandler(BaseHTTPRequestHandler):
-    def is_authenticated(self) -> bool:
-        """Verifies whether caller holds valid Mission Commander authorization."""
+    def get_authenticated_session(self) -> Optional[Dict[str, Any]]:
+        """Returns session dict if caller holds valid Rescue Team authorization, else None."""
         auth_header = self.headers.get("Authorization", "")
         if auth_header.startswith("Bearer "):
             token = auth_header[7:].strip()
-            if token == COMMANDER_TOKEN:
-                return True
+            if token in ACTIVE_SESSIONS:
+                return ACTIVE_SESSIONS[token]
 
         custom_key = self.headers.get("X-Commander-Key", "").strip()
-        if custom_key == COMMANDER_PASSCODE or custom_key == COMMANDER_TOKEN:
-            return True
+        if custom_key in ACTIVE_SESSIONS:
+            return ACTIVE_SESSIONS[custom_key]
+        if custom_key in (COMMANDER_PASSCODE, DEMO_PASSWORD):
+            return {"email": "commander@akashsetu.local", "role": "MISSION_COMMANDER"}
 
-        return False
+        return None
+
+    def is_authenticated(self) -> bool:
+        """Verifies whether caller holds valid Rescue Team authorization."""
+        return self.get_authenticated_session() is not None
     def log_message(self, format, *args):
         # Override to keep server console clean while logging API calls
         sys.stderr.write(f"[{self.log_date_time_string()}] {self.command} {self.path} - {format%args}\n")
@@ -105,7 +133,14 @@ class AkashSetuRequestHandler(BaseHTTPRequestHandler):
                 dtype = query.get("disaster_type", [None])[0]
                 search = query.get("search", [None])[0]
                 incidents = get_incidents(status=status, priority=priority, disaster_type=dtype, search=search)
-                self._send_json({"incidents": incidents, "count": len(incidents)})
+                session = self.get_authenticated_session()
+                # If public, ensure raw message contact info is hidden
+                self._send_json({
+                    "incidents": incidents,
+                    "count": len(incidents),
+                    "authenticated": session is not None,
+                    "user": session.get("email") if session else None
+                })
                 return
 
             if path.startswith("/api/incidents/"):
@@ -114,13 +149,22 @@ class AkashSetuRequestHandler(BaseHTTPRequestHandler):
                     inc_id = int(parts[2])
                     inc = get_incident_by_id(inc_id)
                     if inc:
-                        self._send_json({"incident": inc})
+                        session = self.get_authenticated_session()
+                        if not session and "raw_messages" in inc:
+                            for m in inc["raw_messages"]:
+                                m["sender_contact"] = "Citizen (Protected)"
+                        self._send_json({"incident": inc, "authenticated": session is not None})
                     else:
                         self._send_error(f"Incident #{inc_id} not found", status=404)
                     return
 
             if path == "/api/auth/verify":
-                self._send_json({"authenticated": self.is_authenticated()})
+                session = self.get_authenticated_session()
+                self._send_json({
+                    "authenticated": session is not None,
+                    "session": session,
+                    "allowed_emails": ALLOWED_RESCUE_EMAILS
+                })
                 return
 
             if path == "/api/teams":
@@ -170,48 +214,88 @@ class AkashSetuRequestHandler(BaseHTTPRequestHandler):
         path = parsed.path
 
         try:
-            # Route: Mission Commander authentication
+            # Route: Rescue Team Authentication
             if path == "/api/auth/login":
                 body = self._read_json_body()
-                passcode = (body.get("passcode") or "").strip()
-                if passcode == COMMANDER_PASSCODE:
+                email = (body.get("email") or "").strip().lower()
+                password = (body.get("password") or body.get("passcode") or "").strip()
+
+                # Legacy passcode fallback if email not provided
+                if not email and password in (COMMANDER_PASSCODE, DEMO_PASSWORD):
+                    token = hashlib.sha256(f"AKASH-SETU-{password}".encode()).hexdigest()[:32]
+                    ACTIVE_SESSIONS[token] = {"email": "commander@akashsetu.local", "role": "MISSION_COMMANDER"}
                     self._send_json({
                         "authenticated": True,
-                        "token": COMMANDER_TOKEN,
+                        "token": token,
+                        "email": "commander@akashsetu.local",
                         "role": "MISSION_COMMANDER",
                         "agency": "NDRF / SDMA OPERATIONS COMMAND",
-                        "message": "Commander authentication successful"
+                        "message": "Rescue Commander authenticated successfully."
                     })
-                else:
-                    self._send_error("Invalid Mission Commander Passcode. Authorization denied.", status=401)
+                    return
+
+                # Strict check for allowed emails
+                allowed_lower = [e.lower() for e in ALLOWED_RESCUE_EMAILS]
+                if email not in allowed_lower:
+                    self._send_error(
+                        f"Access restricted to authorized rescue personnel: {', '.join(ALLOWED_RESCUE_EMAILS)}",
+                        status=401
+                    )
+                    return
+
+                # Strict check for password
+                if password not in (DEMO_PASSWORD, COMMANDER_PASSCODE):
+                    self._send_error("Invalid rescue team password. Access denied.", status=401)
+                    return
+
+                token = hashlib.sha256(f"AKASH-SETU-{email}-{password}".encode()).hexdigest()[:32]
+                ACTIVE_SESSIONS[token] = {"email": email, "role": "RESCUE_COMMANDER"}
+                self._send_json({
+                    "authenticated": True,
+                    "token": token,
+                    "email": email,
+                    "role": "RESCUE_COMMANDER",
+                    "agency": "NDRF / SDMA RESCUE COMMAND",
+                    "message": f"Welcome, Rescue Team Commander ({email})"
+                })
+                return
+
+            if path == "/api/auth/logout":
+                auth_header = self.headers.get("Authorization", "")
+                if auth_header.startswith("Bearer "):
+                    token = auth_header[7:].strip()
+                    ACTIVE_SESSIONS.pop(token, None)
+                self._send_json({"authenticated": False, "message": "Logged out successfully"})
                 return
 
             # Route: Emergency report submission (citizen / responder - PUBLIC)
             if path == "/api/emergency/submit":
                 body = self._read_json_body()
-                raw_text = (body.get("raw_text") or "").strip()
+                name = (body.get("name") or body.get("reporter_name") or body.get("sender_contact") or "Citizen").strip()
+                location_name = (body.get("location") or body.get("location_name") or "Disaster Zone").strip()
+                raw_text = (body.get("description") or body.get("raw_text") or body.get("what_happened") or "").strip()
+
                 if not raw_text:
-                    self._send_error("Emergency message text (raw_text) is required.")
+                    self._send_error("Emergency description ('What Happened?') is required.")
                     return
 
-                channel = body.get("channel", "WEB")
-                sender = body.get("sender_contact", "Anonymous Citizen")
+                message_id = f"AS-SOS-{uuid.uuid4().hex[:6].upper()}"
+                channel = body.get("channel", "PUBLIC_WEB_SOS")
 
                 # 1. Strictly preserve raw message
                 raw_msg_id = save_raw_message(
                     raw_text=raw_text,
                     channel=channel,
-                    sender_contact=sender,
-                    signal_metrics=body.get("signal_metrics")
+                    sender_contact=name,
+                    signal_metrics={"sos_message_id": message_id, "location_reported": location_name}
                 )
 
                 # 2. AI / Local NLP Classifier
                 cls_result = classifier.classify_emergency(raw_text, channel=channel)
 
-                # User may override coordinates or specific fields from form
-                lat = float(body.get("latitude") or 30.6315) # Default to disaster valley if omitted
+                # Assign or override coordinates
+                lat = float(body.get("latitude") or 30.6315)
                 lon = float(body.get("longitude") or 79.0028)
-                location_name = body.get("location_name") or "Disaster Zone, Uttarakhand"
                 district = body.get("district") or "Rudraprayag"
 
                 # Check manual trapped/injured override while preserving None
@@ -254,7 +338,7 @@ class AkashSetuRequestHandler(BaseHTTPRequestHandler):
                     "raw_text": raw_text
                 }
 
-                # 3. Duplicate Detection & Consolidation
+                # 3. Duplicate Detection & Consolidation (Formula: M = 0.35L + 0.20T + 0.25C + 0.20D)
                 active_incidents = get_incidents()
                 match = deduplicator.find_best_match(candidate_data, active_incidents)
 
@@ -268,22 +352,50 @@ class AkashSetuRequestHandler(BaseHTTPRequestHandler):
                         "primary_incident_id": primary_inc["id"],
                         "incident_code": primary_inc["incident_code"],
                         "confidence_pct": round(metrics["composite_score"] * 100, 1),
-                        "distance_km": metrics["distance_km"]
+                        "distance_km": metrics["distance_km"],
+                        "formula": metrics.get("formula", "M = 0.35L + 0.20T + 0.25C + 0.20D")
                     }
                     # Link raw message to primary incident
                     link_message_to_incident(raw_msg_id, primary_inc["id"])
-                    # Consolidate
-                    merge_incidents(
-                        primary_id=primary_inc["id"],
-                        duplicate_id=primary_inc["id"],
-                        author="Akash Setu Real-time Deduplicator",
-                        reason=f"Auto-merged: {metrics['status_label']} ({round(metrics['composite_score']*100,1)}% match)"
-                    )
+
+                    # Consolidate directly into primary incident without double counting victims
+                    conn = get_connection()
+                    cur = conn.cursor()
+                    now_ts = datetime.datetime.now(datetime.timezone.utc).isoformat()
+                    cur_trapped = primary_inc.get("trapped_count")
+                    cand_trapped = candidate_data.get("trapped_count")
+                    agg_trapped = None
+                    if cur_trapped is not None or cand_trapped is not None:
+                        agg_trapped = max(cur_trapped or 0, cand_trapped or 0)
+
+                    cur_injured = primary_inc.get("injured_count")
+                    cand_injured = candidate_data.get("injured_count")
+                    agg_injured = None
+                    if cur_injured is not None or cand_injured is not None:
+                        agg_injured = max(cur_injured or 0, cand_injured or 0)
+
+                    new_dup_count = (primary_inc.get("duplicate_count") or 0) + 1
+                    cur.execute("""
+                        UPDATE incidents
+                        SET duplicate_count = ?, is_consolidated = 1,
+                            trapped_count = ?, injured_count = ?, updated_at = ?
+                        WHERE id = ?
+                    """, (new_dup_count, agg_trapped, agg_injured, now_ts, primary_inc["id"]))
+
+                    cur.execute("""
+                        INSERT INTO incident_updates (incident_id, timestamp, author, update_type, message, previous_status, new_status)
+                        VALUES (?, ?, ?, ?, ?, ?, ?)
+                    """, (
+                        primary_inc["id"], now_ts, "Akash Setu Deduplicator", "CONSOLIDATED",
+                        f"Consolidated citizen report {message_id} ({name} at {location_name}). Match score: {round(metrics['composite_score']*100,1)}%",
+                        primary_inc["status"], primary_inc["status"]
+                    ))
+                    conn.commit()
+                    conn.close()
+
                     inc_id = primary_inc["id"]
-                    candidate_data["risk_score"] = primary_inc["risk_score"]
-                    candidate_data["priority_level"] = primary_inc["priority_level"]
                 else:
-                    # 4. Mathematical Risk Scoring
+                    # 4. Mathematical Risk Scoring (Formula: P = 5S + 5D + 3N + 3T + 2V + 2E)
                     risk_breakdown = risk_engine.calculate_risk(candidate_data)
                     candidate_data["risk_score"] = risk_breakdown["final_score"]
                     candidate_data["priority_level"] = risk_breakdown["priority"]
@@ -297,11 +409,15 @@ class AkashSetuRequestHandler(BaseHTTPRequestHandler):
 
                 self._send_json({
                     "status": "SUCCESS",
+                    "message_id": message_id,
                     "incident_id": inc_id,
+                    "incident_code": full_inc.get("incident_code") if full_inc else f"AS-INC-{inc_id}",
                     "is_duplicate_merged": is_duplicate,
                     "duplicate_metrics": matched_incident_info,
                     "incident": full_inc,
-                    "message": "Emergency logged and triaged into Akash Setu."
+                    "priority_tier": full_inc.get("priority_tier", full_inc.get("priority_level", "P1")),
+                    "risk_score": full_inc.get("risk_score", 0),
+                    "message": f"Emergency SOS [{message_id}] received and triaged into Akash Setu."
                 }, status=201)
                 return
 

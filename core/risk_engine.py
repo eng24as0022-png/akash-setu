@@ -1,17 +1,26 @@
 """
-Akash Setu - Mathematical Risk-Scoring & Priority Triage Engine
+Akash Setu - Mathematical Emergency Risk-Scoring Engine
 Module: core/risk_engine.py
 
-Calculates an explainable multi-factor risk score R in [0, 100] based on:
-1. Hazard severity & phenomenological lethality
-2. Humanitarian & demographic vulnerability
-3. Critical infrastructure impairment
-4. Water level / environmental surge
-5. Time decay / Golden Hour escalation
+Calculates transparent, multi-factor risk score P in [0, 100]:
+  P = 5*S + 5*D + 3*N + 3*T + 2*V + 2*E
 
-CRITICAL INVARIANT:
-Never replaces missing victim counts with 0.
-Unknown counts receive a documented PROVISIONAL UNCERTAINTY WEIGHT.
+Where each factor is rated on a 0-5 scale:
+  S: Life-threatening severity (Weight: 25, Multiplier: 5)
+  D: Immediate danger          (Weight: 25, Multiplier: 5)
+  N: Number of people affected (Weight: 15, Multiplier: 3)
+  T: Time sensitivity          (Weight: 15, Multiplier: 3)
+  V: Human vulnerability       (Weight: 10, Multiplier: 2)
+  E: Escape difficulty         (Weight: 10, Multiplier: 2)
+
+Priority Levels:
+  80 - 100: Critical
+  60 - 79 : Very High
+  40 - 59 : High
+  20 - 39 : Moderate
+  0  - 19 : Low
+
+Note: These scores are experimental demonstration estimates for an academic prototype.
 """
 
 import math
@@ -20,185 +29,259 @@ from typing import Dict, Any, Optional, List, Tuple
 
 
 class RiskScoringEngine:
-    # Base hazard weights (Max 35)
-    HAZARD_BASE_WEIGHTS = {
-        "BUILDING_COLLAPSE": 32.0,
-        "FLOOD": 28.0,
-        "LANDSLIDE": 28.0,
-        "FIRE": 26.0,
-        "MEDICAL": 25.0,
-        "EARTHQUAKE": 24.0,
-        "CYCLONE": 20.0,
-        "GENERAL_DISASTER": 15.0
+    """
+    Implements the 6-factor mathematical emergency risk scoring model:
+    P = 5S + 5D + 3N + 3T + 2V + 2E
+    """
+
+    WEIGHTS = {
+        "S": 5, # Severity (Max 25)
+        "D": 5, # Danger (Max 25)
+        "N": 3, # Number of affected (Max 15)
+        "T": 3, # Time sensitivity (Max 15)
+        "V": 2, # Vulnerability (Max 10)
+        "E": 2  # Escape difficulty (Max 10)
     }
 
-    SEVERITY_MULTIPLIER = {
-        "CRITICAL": 1.25,
-        "HIGH": 1.00,
-        "MEDIUM": 0.75,
-        "LOW": 0.50
-    }
-
-    VULNERABILITY_WEIGHTS = {
-        "CRITICAL_MEDICAL": 8.0,
-        "INFANTS_CHILDREN": 6.0,
-        "PREGNANT_WOMEN": 6.0,
-        "HYPOTHERMIA_EXPOSURE": 5.0,
-        "ELDERLY": 4.0
-    }
-
-    INFRASTRUCTURE_WEIGHTS = {
-        "DAM_RISK": 10.0,
-        "HOSPITAL_COMPROMISED": 8.0,
-        "BRIDGE_COLLAPSE": 7.0,
-        "BUILDING_COLLAPSE_RISK": 8.0,
-        "POWER_GRID_FAILURE": 4.0,
-        "ROAD_HIGHWAY_CUTOFF": 4.0
-    }
-
-    # Weight applied when casualty count is genuinely unknown (preserves NULL without assuming 0)
-    PROVISIONAL_CASUALTY_WEIGHT = 12.0
-    PROVISIONAL_INJURED_WEIGHT = 4.0
-
-    def calculate_risk(self, incident: Dict[str, Any]) -> Dict[str, Any]:
+    def estimate_factors_from_incident(self, incident: Dict[str, Any]) -> Dict[str, Optional[float]]:
         """
-        Calculates mathematical risk score and returns a transparent audit breakdown.
+        Estimates the 6 fundamental risk factors (0.0 - 5.0) from incident data.
+        Returns None for genuinely unknown factors (strict null preservation).
         """
         disaster_type = (incident.get("disaster_type") or "GENERAL_DISASTER").upper()
         severity_level = (incident.get("severity_level") or "HIGH").upper()
-        vulnerable_groups = incident.get("vulnerable_groups") or []
-        infra_damaged = incident.get("infrastructure_damaged") or []
-        water_level = incident.get("water_level_meters")
         trapped_count = incident.get("trapped_count")
         injured_count = incident.get("injured_count")
-        status = incident.get("status") or "PENDING_TRIAGE"
+        vulns = incident.get("vulnerable_groups") or []
+        infra = incident.get("infrastructure_damaged") or []
+        water_level = incident.get("water_level_meters")
+        raw_text = (incident.get("raw_text") or incident.get("title") or "").lower()
 
-        is_provisional = False
-        provisional_reasons: List[str] = []
-
-        # 1. Base Hazard Severity Score (10 - 35)
-        base_h = self.HAZARD_BASE_WEIGHTS.get(disaster_type, 15.0)
-        sev_mult = self.SEVERITY_MULTIPLIER.get(severity_level, 1.0)
-        s_hazard = min(35.0, base_h * sev_mult)
-
-        # 2. Humanitarian & Victim Score (0 - 35)
-        # Trapped component
-        if trapped_count is not None:
-            # Trapped count is verified: logarithmic scale with linear damping
-            s_trapped = min(20.0, 4.0 * math.log(1.0 + trapped_count) + 0.8 * trapped_count)
-            trapped_label = f"Verified {trapped_count} persons trapped"
+        # 1. S: Life-Threatening Severity (0 - 5)
+        # Assesses phenomenological lethality of the incident
+        if any(w in raw_text for w in ["cardiac", "heart attack", "severe bleeding", "bleeding heavily", "unconscious", "suffocating", "cannot breathe", "breathing difficulty", "drowning", "crushed"]):
+            S = 5.0
+        elif disaster_type in ["BUILDING_COLLAPSE", "FIRE", "GAS_LEAKAGE"]:
+            S = 4.5 if severity_level == "CRITICAL" else 4.0
+        elif disaster_type in ["FLOOD", "LANDSLIDE"]:
+            if water_level and water_level >= 2.0:
+                S = 5.0
+            elif water_level and water_level >= 1.0:
+                S = 4.0
+            else:
+                S = 3.5
+        elif disaster_type == "ROAD_ACCIDENT":
+            S = 4.5 if (injured_count and injured_count > 0) else 3.5
+        elif disaster_type == "ELECTRICAL_HAZARD":
+            S = 4.0
+        elif disaster_type == "SHORTAGE":
+            S = 2.5
         else:
-            # Trapped count is unknown: STRICTLY PRESERVE NULL and apply provisional weight
-            s_trapped = self.PROVISIONAL_CASUALTY_WEIGHT
-            is_provisional = True
-            provisional_reasons.append("Trapped count is unspecified (provisional uncertainty weight applied; preserved as NULL)")
-            trapped_label = f"Unknown / Unverified (Provisional weight: {self.PROVISIONAL_CASUALTY_WEIGHT:.1f})"
+            S = 3.0 if severity_level == "HIGH" else 2.0
 
-        # Injured component
-        if injured_count is not None:
-            s_injured = min(8.0, 1.5 * injured_count)
-            injured_label = f"Verified {injured_count} injured"
+        # 2. D: Immediate Danger (0 - 5)
+        # Assesses imminent environmental or biological threat
+        if any(w in raw_text for w in ["water rising fast", "fire spreading", "about to give way", "about to collapse", "gas leaking", "flames", "severe bleeding", "bleeding heavily", "cannot breathe", "cardiac", "heart attack"]):
+            D = 5.0
+        elif any(w in raw_text for w in ["cracks in walls", "submerged", "heavy smoke", "freezing rain"]):
+            D = 4.0
+        elif disaster_type in ["FIRE", "FLOOD", "GAS_LEAKAGE"]:
+            D = 4.0
+        elif severity_level == "CRITICAL":
+            D = 4.5
         else:
-            s_injured = self.PROVISIONAL_INJURED_WEIGHT
-            injured_label = f"Injured status unconfirmed (Provisional weight: {self.PROVISIONAL_INJURED_WEIGHT:.1f})"
+            D = 3.0
 
-        # Vulnerable demographics
-        s_vuln = 0.0
-        vuln_breakdown = []
-        for v in vulnerable_groups:
-            w = self.VULNERABILITY_WEIGHTS.get(v, 3.0)
-            s_vuln += w
-            vuln_breakdown.append(f"{v} (+{w:.1f})")
-        s_vuln = min(15.0, s_vuln)
-
-        s_human = min(35.0, s_trapped + s_injured + s_vuln)
-
-        # 3. Critical Infrastructure & Environmental Surge (0 - 20)
-        s_infra = 0.0
-        infra_breakdown = []
-        for item in infra_damaged:
-            w = self.INFRASTRUCTURE_WEIGHTS.get(item, 3.0)
-            s_infra += w
-            infra_breakdown.append(f"{item} (+{w:.1f})")
-
-        # Water level surge factor
-        s_water = 0.0
-        if water_level is not None:
-            if water_level >= 2.5:
-                s_water = 8.0
-            elif water_level >= 1.5:
-                s_water = 5.0
-            elif water_level >= 0.5:
-                s_water = 3.0
-            infra_breakdown.append(f"Flood Depth {water_level:.1f}m (+{s_water:.1f})")
-
-        s_infra_total = min(20.0, s_infra + s_water)
-
-        # 4. Time Elapsed Urgency (Golden Hour Principle) (0 - 15)
-        # Urgency rises as time elapses without active dispatch
-        elapsed_hours = self._compute_elapsed_hours(incident.get("created_at"))
-        if status in ("PENDING_TRIAGE", "TRIAGED"):
-            s_time = min(12.0, 1.8 * math.sqrt(max(0.1, elapsed_hours)))
-        elif status == "DISPATCHED":
-            # Response underway; urgency stabilized
-            s_time = 4.0
-        elif status in ("IN_PROGRESS", "ON_SITE"):
-            s_time = 2.0
-        else: # RESOLVED, CLOSED
-            s_time = 0.0
-
-        # Raw composite sum
-        composite_raw = s_hazard + s_human + s_infra_total + s_time
-        final_risk_score = round(min(100.0, max(5.0, composite_raw)), 1)
-
-        # 5. Priority Classification
-        if final_risk_score >= 75.0:
-            priority = "P1"
-            priority_label = "P1 - CRITICAL / IMMEDIATE LIFE THREAT"
-            response_window = "< 15 minutes dispatch target"
-        elif final_risk_score >= 55.0:
-            priority = "P2"
-            priority_label = "P2 - HIGH URGENCY"
-            response_window = "15 - 45 minutes dispatch target"
-        elif final_risk_score >= 35.0:
-            priority = "P3"
-            priority_label = "P3 - ELEVATED CONCERN"
-            response_window = "45 - 120 minutes dispatch target"
+        # 3. N: Number of People Affected (0 - 5)
+        # Logarithmic scale for affected people
+        if trapped_count is not None or injured_count is not None:
+            total_affected = (trapped_count or 0) + (injured_count or 0)
+            if total_affected >= 20:
+                N = 5.0
+            elif total_affected >= 10:
+                N = 4.0
+            elif total_affected >= 5:
+                N = 3.0
+            elif total_affected >= 2:
+                N = 2.0
+            elif total_affected == 1:
+                N = 1.5 # Single victim
+            else:
+                N = 1.0
         else:
-            priority = "P4"
-            priority_label = "P4 - ROUTINE / RECOVERY SUPPORT"
-            response_window = "Staged relief distribution"
+            # Genuinely unknown affected count -> None!
+            N = None
 
-        breakdown = {
-            "hazard_score": round(s_hazard, 1),
-            "humanitarian_score": round(s_human, 1),
-            "infrastructure_score": round(s_infra_total, 1),
-            "time_decay_score": round(s_time, 1),
-            "final_score": final_risk_score,
-            "priority": priority,
-            "priority_label": priority_label,
-            "response_window": response_window,
-            "elapsed_hours": round(elapsed_hours, 1),
-            "trapped_metric": trapped_label,
-            "injured_metric": injured_label,
-            "vulnerabilities": vuln_breakdown,
-            "infrastructure": infra_breakdown,
-            "is_provisional": is_provisional,
-            "provisional_reasons": provisional_reasons,
-            "algorithm_version": "AS-RS-2026.3-EXPERIMENTAL",
-            "algorithm_notice": "[EXPERIMENTAL ALGORITHM: MATHEMATICAL MULTI-FACTOR DISASTER RISK METRIC]"
+        # 4. T: Time Sensitivity (0 - 5)
+        # Golden hour principle
+        if any(w in raw_text for w in ["immediately", "urgent", "running out", "hypothermia", "45 minutes", "suffocating", "severe bleeding", "bleeding heavily", "cannot breathe", "cardiac"]):
+            T = 5.0
+        elif any(w in raw_text for w in ["trapped", "injured", "freezing"]):
+            T = 4.0
+        elif severity_level in ["CRITICAL", "HIGH"]:
+            T = 3.5
+        else:
+            T = 2.0
+
+        # 5. V: Human Vulnerability (0 - 5)
+        # Presence of children, elderly, pregnant, or oxygen-dependent patients
+        vuln_points = 1.0
+        if "INFANTS_CHILDREN" in vulns or any(w in raw_text for w in ["child", "baby", "infant"]):
+            vuln_points += 2.0
+        if "PREGNANT_WOMEN" in vulns or "pregnant" in raw_text:
+            vuln_points += 2.0
+        if "CRITICAL_MEDICAL" in vulns or any(w in raw_text for w in ["dialysis", "oxygen", "cardiac", "severe bleeding", "unconscious", "cannot breathe", "breathing difficulty"]):
+            vuln_points += 3.0
+        if "ELDERLY" in vulns or any(w in raw_text for w in ["elderly", "aged", "old"]):
+            vuln_points += 1.5
+        V = min(5.0, vuln_points)
+
+        # 6. E: Escape Difficulty (0 - 5)
+        # Trapped under rubble, roof in flood, cut-off mountain ridge, collapsed bridge, or incapacitated patient
+        if any(w in raw_text for w in ["under rubble", "bridge washed away", "cut off", "island", "rooftop", "trapped on roof", "in basement"]):
+            E = 5.0
+        elif any(w in raw_text for w in ["unconscious", "unable to move", "cannot walk", "severe bleeding", "cannot breathe", "bedridden"]):
+            E = 4.5
+        elif "BRIDGE_COLLAPSE" in infra or "ROAD_HIGHWAY_CUTOFF" in infra:
+            E = 4.5
+        elif disaster_type in ["BUILDING_COLLAPSE", "FLOOD"]:
+            E = 4.0
+        elif any(w in raw_text for w in ["stranded", "blocked", "narrow ledge"]):
+            E = 3.5
+        else:
+            E = 2.0
+
+        return {
+            "S": round(S, 1),
+            "D": round(D, 1),
+            "N": round(N, 1) if N is not None else None,
+            "T": round(T, 1),
+            "V": round(V, 1),
+            "E": round(E, 1)
         }
 
-        return breakdown
+    def calculate_risk(self, incident: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Calculates mathematical risk score P = 5S + 5D + 3N + 3T + 2V + 2E
+        Handles missing factors using weighted available-factor normalization.
+        """
+        factors = self.estimate_factors_from_incident(incident)
 
-    def _compute_elapsed_hours(self, created_at_str: Optional[str]) -> float:
-        if not created_at_str:
-            return 0.5
-        try:
-            cleaned = created_at_str.replace("Z", "+00:00")
-            dt = datetime.datetime.fromisoformat(cleaned)
-            now = datetime.datetime.now(datetime.timezone.utc)
-            delta = (now - dt).total_seconds() / 3600.0
-            return max(0.0, delta)
-        except Exception:
-            return 0.5
+        S = factors["S"]
+        D = factors["D"]
+        N = factors["N"]
+        T = factors["T"]
+        V = factors["V"]
+        E = factors["E"]
+
+        is_provisional = False
+        reasons = []
+
+        # Check for unknown factors
+        # Total possible weight = 25 (S) + 25 (D) + 15 (N) + 15 (T) + 10 (V) + 10 (E) = 100
+        available_weight = 0
+        weighted_sum = 0.0
+
+        if S is not None:
+            weighted_sum += 5.0 * S
+            available_weight += 25
+            reasons.append(f"Severity S={S:.1f} (+{5.0*S:.1f} pts)")
+        else:
+            is_provisional = True
+            reasons.append("Severity S is unknown")
+
+        if D is not None:
+            weighted_sum += 5.0 * D
+            available_weight += 25
+            reasons.append(f"Immediate Danger D={D:.1f} (+{5.0*D:.1f} pts)")
+        else:
+            is_provisional = True
+            reasons.append("Immediate Danger D is unknown")
+
+        if N is not None:
+            weighted_sum += 3.0 * N
+            available_weight += 15
+            reasons.append(f"Affected People N={N:.1f} (+{3.0*N:.1f} pts)")
+        else:
+            is_provisional = True
+            reasons.append("Affected People N is unstated (provisional score applied; preserved as NULL)")
+
+        if T is not None:
+            weighted_sum += 3.0 * T
+            available_weight += 15
+            reasons.append(f"Time Sensitivity T={T:.1f} (+{3.0*T:.1f} pts)")
+        else:
+            is_provisional = True
+            reasons.append("Time Sensitivity T is unknown")
+
+        if V is not None:
+            weighted_sum += 2.0 * V
+            available_weight += 10
+            reasons.append(f"Human Vulnerability V={V:.1f} (+{2.0*V:.1f} pts)")
+        else:
+            is_provisional = True
+            reasons.append("Vulnerability V is unknown")
+
+        if E is not None:
+            weighted_sum += 2.0 * E
+            available_weight += 10
+            reasons.append(f"Escape Difficulty E={E:.1f} (+{2.0*E:.1f} pts)")
+        else:
+            is_provisional = True
+            reasons.append("Escape Difficulty E is unknown")
+
+        # Weighted Available-Factor Normalization
+        if available_weight > 0:
+            normalized_score = (weighted_sum / available_weight) * 100.0
+        else:
+            normalized_score = 50.0
+
+        final_score = round(min(100.0, max(0.0, normalized_score)), 1)
+
+        # Priority Level Mapping
+        # 80 - 100: Critical
+        # 60 - 79 : Very High
+        # 40 - 59 : High
+        # 20 - 39 : Moderate
+        # 0  - 19 : Low
+        if final_score >= 80.0:
+            priority = "Critical"
+            priority_code = "P1"
+            response_window = "< 15 minutes immediate dispatch"
+        elif final_score >= 60.0:
+            priority = "Very High"
+            priority_code = "P2"
+            response_window = "15 - 45 minutes urgent dispatch"
+        elif final_score >= 40.0:
+            priority = "High"
+            priority_code = "P3"
+            response_window = "45 - 120 minutes priority response"
+        elif final_score >= 20.0:
+            priority = "Moderate"
+            priority_code = "P4"
+            response_window = "Staged relief and monitoring"
+        else:
+            priority = "Low"
+            priority_code = "P5"
+            response_window = "Standard logistics support"
+
+        return {
+            "final_score": final_score,
+            "priority": priority_code,
+            "priority_label": f"{priority} ({final_score}/100)",
+            "priority_tier": priority,
+            "response_window": response_window,
+            "factors": {
+                "S_severity": S,
+                "D_danger": D,
+                "N_affected": N,
+                "T_time": T,
+                "V_vulnerability": V,
+                "E_escape": E
+            },
+            "formula": "P = 5S + 5D + 3N + 3T + 2V + 2E",
+            "is_provisional": is_provisional,
+            "reasons": reasons,
+            "algorithm_version": "AS-RS-2026.4-COLLEGE-PROTOTYPE",
+            "algorithm_notice": "Academic Prototype Demonstration Estimates — Not for real emergency use."
+        }

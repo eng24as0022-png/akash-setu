@@ -467,12 +467,24 @@ def merge_incidents(primary_id: int, duplicate_id: int, author: str,
     # Repoint raw messages from duplicate to primary
     cursor.execute("UPDATE raw_messages SET incident_id = ? WHERE incident_id = ?", (primary_id, duplicate_id))
 
-    # Aggregate counts carefully: preserve NULL if both were unknown, otherwise sum known values
+    # Aggregate counts carefully: preserve NULL if both were unknown, otherwise max known values to prevent double counting
     p_trapped = p_row["trapped_count"]
     d_trapped = d_row["trapped_count"]
     new_trapped = None
     if p_trapped is not None or d_trapped is not None:
         new_trapped = max(p_trapped or 0, d_trapped or 0)
+
+    p_injured = p_row["injured_count"]
+    d_injured = d_row["injured_count"]
+    new_injured = None
+    if p_injured is not None or d_injured is not None:
+        new_injured = max(p_injured or 0, d_injured or 0)
+
+    p_casualties = p_row["casualties_count"]
+    d_casualties = d_row["casualties_count"]
+    new_casualties = None
+    if p_casualties is not None or d_casualties is not None:
+        new_casualties = max(p_casualties or 0, d_casualties or 0)
 
     # Merge vulnerable groups list
     p_vuln = json.loads(p_row["vulnerable_groups"] or "[]")
@@ -484,10 +496,10 @@ def merge_incidents(primary_id: int, duplicate_id: int, author: str,
     cursor.execute("""
         UPDATE incidents
         SET duplicate_count = ?, is_consolidated = 1,
-            trapped_count = ?, vulnerable_groups = ?,
-            updated_at = ?
+            trapped_count = ?, injured_count = ?, casualties_count = ?,
+            vulnerable_groups = ?, updated_at = ?
         WHERE id = ?
-    """, (new_dup_count, new_trapped, json.dumps(merged_vuln), now, primary_id))
+    """, (new_dup_count, new_trapped, new_injured, new_casualties, json.dumps(merged_vuln), now, primary_id))
 
     # Mark duplicate incident as CLOSED (CONSOLIDATED)
     cursor.execute("""
@@ -672,8 +684,23 @@ def get_analytics_summary(db_path: Optional[str] = None) -> Dict[str, Any]:
 
     conn.close()
 
+    critical_count = priority_counts.get("P1", 0)
+    high_priority_count = priority_counts.get("P2", 0) + priority_counts.get("P3", 0)
+    pending_count = (
+        status_counts.get("PENDING_TRIAGE", 0) +
+        status_counts.get("TRIAGED", 0) +
+        status_counts.get("DISPATCHED", 0) +
+        status_counts.get("IN_PROGRESS", 0)
+    )
+    resolved_count = status_counts.get("RESOLVED", 0) + status_counts.get("CLOSED", 0)
+
     return {
+        "total_sos_reports": total_messages,
         "total_incidents": total_incidents,
+        "critical_incidents": critical_count,
+        "high_priority_incidents": high_priority_count,
+        "pending_incidents": pending_count,
+        "resolved_incidents": resolved_count,
         "total_messages": total_messages,
         "satellite_messages_count": sat_messages,
         "priority_distribution": {

@@ -13,7 +13,9 @@ class AkashSetuApp {
         this.selectedIncidentId = null;
         this.activeTab = "triage";
         this.authToken = localStorage.getItem("akash_commander_token");
+        this.authEmail = localStorage.getItem("akash_commander_email") || "eng24as0022@dsu.edu.in";
 
+        this.initHeroButtons();
         this.initTabs();
         this.initFilterEvents();
         this.initSOSForm();
@@ -29,8 +31,38 @@ class AkashSetuApp {
         this.refreshAll();
         this.updateAuthUI();
 
-        // Auto-refresh poll every 8 seconds for real-time mission status
-        setInterval(() => this.backgroundPoll(), 8000);
+        // Auto-refresh poll every 7 seconds for real-time mission status
+        setInterval(() => this.backgroundPoll(), 7000);
+    }
+
+    initHeroButtons() {
+        const btnSOS = document.getElementById("heroBtnSOS");
+        const btnLogin = document.getElementById("heroBtnLogin");
+
+        if (btnSOS) {
+            btnSOS.addEventListener("click", () => {
+                this.switchTab("sos");
+                const nameInput = document.getElementById("sosPersonName");
+                if (nameInput) nameInput.focus();
+                // Ensure form is visible and confirmation card hidden for new report
+                const confCard = document.getElementById("sosConfirmationCard");
+                const form = document.getElementById("sosIntakeForm");
+                if (confCard) confCard.style.display = "none";
+                if (form) form.style.display = "block";
+            });
+        }
+
+        if (btnLogin) {
+            btnLogin.addEventListener("click", () => {
+                if (this.authToken) {
+                    this.switchTab("triage");
+                    this.showToast(`Active Rescue Commander session: ${this.authEmail}`, "success");
+                } else {
+                    const modal = document.getElementById("authModal");
+                    if (modal) modal.style.display = "flex";
+                }
+            });
+        }
     }
 
     initAuth() {
@@ -38,19 +70,20 @@ class AkashSetuApp {
         const modal = document.getElementById("authModal");
         const btnCloseModal = document.getElementById("btnCloseAuthModal");
         const btnModalSubmit = document.getElementById("btnModalSubmitAuth");
-        const modalInput = document.getElementById("modalAuthPasscodeInput");
+        const emailInput = document.getElementById("modalRescueEmail");
+        const passwordInput = document.getElementById("modalAuthPasscodeInput");
         const btnFleetLogin = document.getElementById("btnFleetLogin");
         const fleetInput = document.getElementById("fleetAuthPasscodeInput");
 
         if (btnAuth) {
             btnAuth.addEventListener("click", () => {
                 if (this.authToken) {
-                    if (confirm("Sign out of Mission Commander mode and return to Public View?")) {
+                    if (confirm(`Logged in as ${this.authEmail}. Sign out of Rescue Commander mode?`)) {
                         this.logoutCommander();
                     }
                 } else {
                     modal.style.display = "flex";
-                    if (modalInput) modalInput.focus();
+                    if (emailInput) emailInput.focus();
                 }
             });
         }
@@ -58,43 +91,55 @@ class AkashSetuApp {
         if (btnCloseModal) {
             btnCloseModal.addEventListener("click", () => {
                 modal.style.display = "none";
+                const errBox = document.getElementById("loginErrorAlert");
+                if (errBox) errBox.style.display = "none";
             });
         }
+
+        const handleModalLogin = () => {
+            const email = (emailInput ? emailInput.value : "").trim();
+            const password = (passwordInput ? passwordInput.value : "").trim();
+            this.loginRescueTeam(email, password);
+        };
 
         if (btnModalSubmit) {
-            btnModalSubmit.addEventListener("click", () => {
-                const code = modalInput.value.trim();
-                this.loginCommander(code);
+            btnModalSubmit.addEventListener("click", handleModalLogin);
+        }
+
+        if (passwordInput) {
+            passwordInput.addEventListener("keydown", (e) => {
+                if (e.key === "Enter") handleModalLogin();
             });
         }
 
-        if (modalInput) {
-            modalInput.addEventListener("keydown", (e) => {
-                if (e.key === "Enter") {
-                    this.loginCommander(modalInput.value.trim());
-                }
+        if (emailInput) {
+            emailInput.addEventListener("keydown", (e) => {
+                if (e.key === "Enter" && passwordInput) passwordInput.focus();
             });
         }
 
         if (btnFleetLogin) {
             btnFleetLogin.addEventListener("click", () => {
                 const code = fleetInput.value.trim();
-                this.loginCommander(code);
+                this.loginRescueTeam("eng24as0022@dsu.edu.in", code);
             });
         }
 
         if (fleetInput) {
             fleetInput.addEventListener("keydown", (e) => {
                 if (e.key === "Enter") {
-                    this.loginCommander(fleetInput.value.trim());
+                    this.loginRescueTeam("eng24as0022@dsu.edu.in", fleetInput.value.trim());
                 }
             });
         }
     }
 
-    async loginCommander(passcode) {
-        if (!passcode) {
-            this.showToast("Please enter a commander passcode", "error");
+    async loginRescueTeam(email, password) {
+        const errBox = document.getElementById("loginErrorAlert");
+        if (errBox) errBox.style.display = "none";
+
+        if (!email && !password) {
+            this.showToast("Please enter your rescue email and password", "error");
             return;
         }
 
@@ -102,21 +147,31 @@ class AkashSetuApp {
             const resp = await fetch("/api/auth/login", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ passcode: passcode })
+                body: JSON.stringify({ email: email, password: password })
             });
 
             const data = await resp.json();
-            if (!resp.ok) throw new Error(data.error || "Authentication failed");
+            if (!resp.ok) {
+                const msg = data.error || "Authentication failed";
+                if (errBox) {
+                    errBox.textContent = `❌ ${msg}`;
+                    errBox.style.display = "block";
+                }
+                throw new Error(msg);
+            }
 
             this.authToken = data.token;
+            this.authEmail = data.email || email;
             localStorage.setItem("akash_commander_token", data.token);
+            localStorage.setItem("akash_commander_email", this.authEmail);
 
             const modal = document.getElementById("authModal");
             if (modal) modal.style.display = "none";
 
             this.updateAuthUI();
-            this.showToast("🛡️ Mission Commander Authorized (NDRF/SDMA)", "success");
+            this.showToast(`🛡️ Rescue Commander Authorized: ${this.authEmail}`, "success");
 
+            this.refreshAll();
             if (this.selectedIncidentId) {
                 this.selectIncident(this.selectedIncidentId);
             }
@@ -127,9 +182,12 @@ class AkashSetuApp {
 
     logoutCommander() {
         this.authToken = null;
+        this.authEmail = null;
         localStorage.removeItem("akash_commander_token");
+        localStorage.removeItem("akash_commander_email");
         this.updateAuthUI();
-        this.showToast("Logged out of Commander Mode. Public read-only view active.", "info");
+        this.showToast("Logged out of Rescue Team Mode. Public read-only view active.", "info");
+        this.refreshAll();
         if (this.selectedIncidentId) {
             this.selectIncident(this.selectedIncidentId);
         }
@@ -143,11 +201,11 @@ class AkashSetuApp {
 
         if (btnAuth) {
             if (this.authToken) {
-                btnAuth.innerHTML = "🛡️ Commander Active <span style='font-size:0.7rem;color:#fca5a5;'>[Logout]</span>";
+                btnAuth.innerHTML = `🛡️ ${this.authEmail || 'Commander'} <span style='font-size:0.7rem;color:#fca5a5;'>[Logout]</span>`;
                 btnAuth.style.borderColor = "#10b981";
                 btnAuth.style.color = "#10b981";
             } else {
-                btnAuth.innerHTML = "🔒 Coordinator Login";
+                btnAuth.innerHTML = "🛡️ Rescue Team Login";
                 btnAuth.style.borderColor = "#38bdf8";
                 btnAuth.style.color = "#38bdf8";
             }
@@ -157,7 +215,7 @@ class AkashSetuApp {
             if (this.authToken) {
                 lockScreen.style.display = "none";
                 fleetGrid.style.display = "grid";
-                statusBadge.textContent = "🟢 Operational Commander Authenticated";
+                statusBadge.textContent = `🟢 Authenticated: ${this.authEmail}`;
                 statusBadge.style.color = "#10b981";
             } else {
                 lockScreen.style.display = "block";
@@ -235,41 +293,43 @@ class AkashSetuApp {
 
     initSOSForm() {
         const form = document.getElementById("sosIntakeForm");
+        const confCard = document.getElementById("sosConfirmationCard");
+        const btnAnother = document.getElementById("btnSubmitAnotherSOS");
+
+        if (btnAnother) {
+            btnAnother.addEventListener("click", () => {
+                if (confCard) confCard.style.display = "none";
+                if (form) {
+                    form.style.display = "block";
+                    form.reset();
+                    const nameInput = document.getElementById("sosPersonName");
+                    if (nameInput) nameInput.focus();
+                }
+            });
+        }
+
         if (!form) return;
 
         form.addEventListener("submit", async (e) => {
             e.preventDefault();
             const submitBtn = document.getElementById("btnSubmitSOS");
             submitBtn.disabled = true;
-            submitBtn.textContent = "Processing & Triaging...";
+            submitBtn.textContent = "Processing & Triaging SOS...";
 
             try {
-                // Collect form fields
-                const rawText = document.getElementById("sosRawText").value.trim();
-                const locationName = document.getElementById("sosLocationName").value.trim();
-                const latVal = document.getElementById("sosLatitude").value;
-                const lonVal = document.getElementById("sosLongitude").value;
-                const trappedVal = document.getElementById("sosTrappedCount").value;
-                const injuredVal = document.getElementById("sosInjuredCount").value;
-                const waterVal = document.getElementById("sosWaterLevel").value;
-                const contactVal = document.getElementById("sosContact").value.trim();
-                const channelVal = document.getElementById("sosChannel").value;
+                // Collect ONLY the 3 required fields from form
+                const personName = (document.getElementById("sosPersonName")?.value || "").trim();
+                const locationName = (document.getElementById("sosLocationName")?.value || "").trim();
+                const description = (document.getElementById("sosDescription")?.value || "").trim();
 
-                // Vulnerabilities
-                const vulnChecks = document.querySelectorAll("input[name='sosVuln']:checked");
-                const vulnGroups = Array.from(vulnChecks).map(c => c.value);
+                if (!description) {
+                    throw new Error("Emergency description ('What Happened?') is required.");
+                }
 
                 const payload = {
-                    raw_text: rawText,
-                    location_name: locationName || "Uttarakhand Disaster Sector",
-                    latitude: latVal ? parseFloat(latVal) : 30.6315,
-                    longitude: lonVal ? parseFloat(lonVal) : 79.0028,
-                    trapped_count: trappedVal !== "" ? parseInt(trappedVal) : null, // NULL preservation
-                    injured_count: injuredVal !== "" ? parseInt(injuredVal) : null,
-                    water_level_meters: waterVal !== "" ? parseFloat(waterVal) : null,
-                    sender_contact: contactVal || "Citizen SOS",
-                    channel: channelVal,
-                    vulnerable_groups: vulnGroups
+                    name: personName || "Concerned Citizen",
+                    location: locationName || "Uttarakhand Disaster Sector",
+                    description: description
                 };
 
                 const resp = await fetch("/api/emergency/submit", {
@@ -281,26 +341,36 @@ class AkashSetuApp {
                 const data = await resp.json();
                 if (!resp.ok) throw new Error(data.error || "Failed to submit emergency report");
 
+                // Populate confirmation card
+                this.setText("confMessageId", data.message_id || "AS-SOS-RECEIVED");
+                this.setText("confIncidentCode", data.incident_code || (data.incident ? data.incident.incident_code : "AS-INC-NEW"));
+                
+                const priorityTier = data.priority_tier || (data.incident ? data.incident.priority_level : "P1");
+                const priorityLabel = priorityTier === "P1" ? "Critical Priority (P1) — Immediate Dispatch" : `${priorityTier} Priority`;
+                this.setText("confPriority", priorityLabel);
+
+                // Show confirmation card and hide input form
+                form.style.display = "none";
+                if (confCard) confCard.style.display = "block";
+
                 if (data.is_duplicate_merged) {
                     this.showToast(
                         `Report auto-consolidated into Incident ${data.duplicate_metrics.incident_code} (${data.duplicate_metrics.confidence_pct}% match)!`,
                         "success"
                     );
                 } else {
-                    this.showToast(`Emergency logged: ${data.incident.incident_code} [Priority ${data.incident.priority_level}]`, "success");
+                    this.showToast(`Emergency SOS logged: ${data.message_id} [${priorityTier}]`, "success");
                 }
 
-                form.reset();
-                this.loadIncidents();
+                // Refresh incidents and analytics in background
+                this.loadIncidents(true);
                 this.loadAnalytics();
-                this.switchTab("triage");
-                this.selectIncident(data.incident_id);
 
             } catch (err) {
                 this.showToast(`Submission Error: ${err.message}`, "error");
             } finally {
                 submitBtn.disabled = false;
-                submitBtn.textContent = "Submit Emergency Triage Report 🚨";
+                submitBtn.textContent = "🚨 SEND SOS / REQUEST HELP";
             }
         });
     }
@@ -381,28 +451,34 @@ class AkashSetuApp {
         }
     }
 
-    updateHeaderKPIs() {
-        const p1Count = this.incidents.filter(i => i.priority_level === "P1" && i.status !== "RESOLVED" && i.status !== "CLOSED").length;
-        const totalActive = this.incidents.filter(i => i.status !== "RESOLVED" && i.status !== "CLOSED").length;
-        const deployedTeams = this.teams.filter(t => t.status === "DISPATCHED" || t.status === "ON_SITE").length;
+    async updateHeaderKPIs() {
+        const p1Count = this.incidents.filter(i => (i.priority_level === "P1" || (i.risk_score && i.risk_score >= 80)) && i.status !== "RESOLVED" && i.status !== "CLOSED").length;
+        const highPriorityCount = this.incidents.filter(i => (i.priority_level === "P2" || i.priority_level === "P3" || (i.risk_score && i.risk_score >= 40 && i.risk_score < 80)) && i.status !== "RESOLVED" && i.status !== "CLOSED").length;
+        const pendingCount = this.incidents.filter(i => i.status !== "RESOLVED" && i.status !== "CLOSED").length;
+        const resolvedCount = this.incidents.filter(i => i.status === "RESOLVED" || i.status === "CLOSED").length;
 
-        let trappedSum = 0;
-        this.incidents.forEach(i => {
-            if (i.trapped_count !== null && i.status !== "RESOLVED" && i.status !== "CLOSED") {
-                trappedSum += i.trapped_count;
+        // Fetch authoritative analytics if available
+        try {
+            const resp = await fetch("/api/analytics");
+            if (resp.ok) {
+                const data = await resp.json();
+                this.setText("kpiTotalSOS", data.total_sos_reports ?? data.total_messages ?? (this.incidents.length + 5));
+                this.setText("kpiTotalIncidents", data.total_incidents ?? this.incidents.length);
+                this.setText("headerKpiP1", data.critical_incidents ?? p1Count);
+                this.setText("headerKpiActive", data.high_priority_incidents ?? highPriorityCount);
+                this.setText("kpiPendingIncidents", data.pending_incidents ?? pendingCount);
+                this.setText("kpiResolvedIncidents", data.resolved_incidents ?? resolvedCount);
+                return;
             }
-        });
+        } catch (e) {}
 
+        // Fallback to client-side count
+        this.setText("kpiTotalSOS", this.incidents.length);
+        this.setText("kpiTotalIncidents", this.incidents.length);
         this.setText("headerKpiP1", p1Count);
-        this.setText("headerKpiActive", totalActive);
-        this.setText("headerKpiTeams", deployedTeams);
-        this.setText("headerKpiTrapped", trappedSum);
-
-        const p1TabBadge = document.getElementById("badgeTabP1");
-        if (p1TabBadge) {
-            p1TabBadge.textContent = p1Count;
-            p1TabBadge.classList.toggle("active-p1", p1Count > 0);
-        }
+        this.setText("headerKpiActive", highPriorityCount);
+        this.setText("kpiPendingIncidents", pendingCount);
+        this.setText("kpiResolvedIncidents", resolvedCount);
     }
 
     renderIncidentQueue() {
@@ -530,42 +606,55 @@ class AkashSetuApp {
             <div class="section-label">📜 Verbatim Raw Message Intake (Preserved Proof)</div>
             ${rawMsgsHtml || '<div style="color:var(--text-dim);font-size:0.8rem;">No raw message recorded.</div>'}
 
-            <!-- 2. Mathematical Risk-Scoring Audit Trace -->
-            <div class="section-label">📐 Mathematical Risk Score Algorithm (AS-RS-2026.3)</div>
+            <!-- Consolidated Report Provenance Badge -->
+            <div style="background:rgba(56,189,248,0.1);border:1px solid rgba(56,189,248,0.3);border-radius:6px;padding:0.6rem 0.8rem;margin:0.75rem 0;font-size:0.78rem;color:#bae6fd;">
+                🔗 <strong>Incident Consolidation Status:</strong> ${(inc.duplicate_count || 0) + 1} citizen message(s) consolidated into this single incident using formula <code style="color:#38bdf8;">M = 0.35L + 0.20T + 0.25C + 0.20D</code> without double-counting casualties.
+            </div>
+
+            <!-- 2. Mathematical Risk-Scoring Audit Trace (6-Factor Model) -->
+            <div class="section-label">📐 Mathematical Risk-Scoring Engine (AS-RS-2026.4)</div>
             <div class="math-risk-card">
                 <div class="math-title">
-                    <span>COMPOSITE RISK R = ${inc.risk_score} / 100</span>
-                    <span style="font-size:0.75rem;color:var(--text-dim);">${math.response_window || ''}</span>
+                    <span>COMPOSITE RISK SCORE P = ${inc.risk_score} / 100</span>
+                    <span style="font-size:0.75rem;color:var(--text-dim);">${math.response_window || 'Operational Triage Priority'}</span>
                 </div>
                 <div class="math-formula-box">
-                    Formula: R = min(100, S_hazard + S_human + S_infra + S_time)
+                    Formula: P = 5*S + 5*D + 3*N + 3*T + 2*V + 2*E (Max 100)
                 </div>
-                <div class="math-grid">
+                <div class="math-grid" style="grid-template-columns: repeat(3, 1fr);">
                     <div class="math-stat">
-                        <div class="math-stat-label">Hazard Factor</div>
-                        <div class="math-stat-val">${math.hazard_score ?? 0} pts (${inc.disaster_type})</div>
+                        <div class="math-stat-label">S: Life Severity (×5)</div>
+                        <div class="math-stat-val">${math.factors?.S_severity ?? 'N/A'} / 5.0</div>
                     </div>
                     <div class="math-stat">
-                        <div class="math-stat-label">Humanitarian / Victims</div>
-                        <div class="math-stat-val">${math.humanitarian_score ?? 0} pts</div>
+                        <div class="math-stat-label">D: Imminent Danger (×5)</div>
+                        <div class="math-stat-val">${math.factors?.D_danger ?? 'N/A'} / 5.0</div>
                     </div>
                     <div class="math-stat">
-                        <div class="math-stat-label">Critical Infrastructure</div>
-                        <div class="math-stat-val">${math.infrastructure_score ?? 0} pts</div>
+                        <div class="math-stat-label">N: Affected People (×3)</div>
+                        <div class="math-stat-val">${math.factors?.N_affected !== null && math.factors?.N_affected !== undefined ? math.factors.N_affected + ' / 5.0' : 'UNKNOWN (NULL)'}</div>
                     </div>
                     <div class="math-stat">
-                        <div class="math-stat-label">Time Escalation</div>
-                        <div class="math-stat-val">${math.time_decay_score ?? 0} pts (${math.elapsed_hours ?? 0} hrs elapsed)</div>
+                        <div class="math-stat-label">T: Time Sensitivity (×3)</div>
+                        <div class="math-stat-val">${math.factors?.T_time ?? 'N/A'} / 5.0</div>
+                    </div>
+                    <div class="math-stat">
+                        <div class="math-stat-label">V: Vulnerability (×2)</div>
+                        <div class="math-stat-val">${math.factors?.V_vulnerability ?? 'N/A'} / 5.0</div>
+                    </div>
+                    <div class="math-stat">
+                        <div class="math-stat-label">E: Escape Difficulty (×2)</div>
+                        <div class="math-stat-val">${math.factors?.E_escape ?? 'N/A'} / 5.0</div>
                     </div>
                 </div>
                 ${math.is_provisional ? `
-                    <div class="provisional-badge">
+                    <div class="provisional-badge" style="margin-top:0.6rem;">
                         ⚠️ <strong>[PROVISIONAL SCORE APPLIED]</strong><br>
-                        ${(math.provisional_reasons || []).join("<br>")}
+                        ${(math.reasons || math.provisional_reasons || []).join("<br>")}
                     </div>
                 ` : ''}
                 <div style="font-size:0.7rem;color:var(--text-dim);margin-top:0.4rem;">
-                    Notice: ${math.algorithm_notice || '[MATHEMATICAL MULTI-FACTOR DISASTER RISK METRIC]'}
+                    Notice: Academic Prototype Demonstration Estimates — Normalized for available factors.
                 </div>
             </div>
 

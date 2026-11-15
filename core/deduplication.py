@@ -33,8 +33,8 @@ class IncidentDeduplicator:
     def __init__(self,
                  geo_threshold_km: float = 3.0,
                  time_threshold_hours: float = 6.0,
-                 auto_merge_threshold: float = 0.72,
-                 flag_threshold: float = 0.48):
+                 auto_merge_threshold: float = 0.65,
+                 flag_threshold: float = 0.45):
         self.geo_threshold_km = geo_threshold_km
         self.time_threshold_hours = time_threshold_hours
         self.auto_merge_threshold = auto_merge_threshold
@@ -47,57 +47,73 @@ class IncidentDeduplicator:
 
     def compute_similarity(self, candidate: Dict[str, Any], existing: Dict[str, Any]) -> Dict[str, Any]:
         """
-        Computes transparent multi-factor similarity between candidate and existing incident.
-        Returns composite score and individual component metrics.
+        Computes transparent multi-factor similarity between candidate and existing incident:
+        Formula: M = 0.35*L + 0.20*T + 0.25*C + 0.20*D
+        Where:
+          L: Location / Spatial proximity (0 to 1)
+          T: Temporal proximity (0 to 1)
+          C: Category congruence (0 to 1)
+          D: Description / Semantic text similarity (0 to 1)
         """
-        # 1. Geo proximity
+        # 1. L: Geo proximity (0.0 to 1.0)
         lat1, lon1 = float(candidate.get("latitude", 0.0)), float(candidate.get("longitude", 0.0))
         lat2, lon2 = float(existing.get("latitude", 0.0)), float(existing.get("longitude", 0.0))
         distance_km = haversine_distance_km(lat1, lon1, lat2, lon2)
 
         if distance_km <= self.geo_threshold_km:
-            geo_sim = max(0.0, 1.0 - (distance_km / self.geo_threshold_km))
+            L = max(0.0, 1.0 - (distance_km / self.geo_threshold_km))
         else:
-            geo_sim = 0.0
+            # Check if same named location / landmark as fallback
+            c_loc = (candidate.get("location_name") or "").lower().strip()
+            e_loc = (existing.get("location_name") or "").lower().strip()
+            if c_loc and e_loc and (c_loc in e_loc or e_loc in c_loc):
+                L = 0.85
+            else:
+                L = 0.0
 
-        # 2. Temporal proximity
+        # 2. T: Temporal proximity (0.0 to 1.0)
         c_time = self._parse_iso(candidate.get("created_at"))
         e_time = self._parse_iso(existing.get("created_at"))
         delta_hours = abs((c_time - e_time).total_seconds()) / 3600.0
 
         if delta_hours <= self.time_threshold_hours:
-            time_sim = max(0.0, 1.0 - (delta_hours / self.time_threshold_hours))
+            T = max(0.0, 1.0 - (delta_hours / self.time_threshold_hours))
         else:
-            time_sim = 0.0
+            T = 0.0
 
-        # 3. Disaster Type Congruence
+        # 3. C: Disaster Category Congruence (0.0 to 1.0)
         c_type = (candidate.get("disaster_type") or "").upper()
         e_type = (existing.get("disaster_type") or "").upper()
         if c_type == e_type:
-            type_sim = 1.0
+            C = 1.0
         elif {c_type, e_type} <= {"FLOOD", "LANDSLIDE"}:
-            type_sim = 0.7 # Common compound hazard in cloudbursts
+            C = 0.75 # Common compound hazard in cloudbursts
+        elif {c_type, e_type} <= {"FIRE", "GAS_LEAKAGE", "EXPLOSION"}:
+            C = 0.70
+        elif {c_type, e_type} <= {"BUILDING_COLLAPSE", "EARTHQUAKE"}:
+            C = 0.80
+        elif "RESCUE_REQUEST" in (c_type, e_type):
+            C = 0.60
         else:
-            type_sim = 0.1
+            C = 0.10
 
-        # 4. Semantic Text Similarity (Jaccard + Landmark matching)
+        # 4. D: Description / Text Similarity (0.0 to 1.0)
         c_text = (candidate.get("raw_text") or candidate.get("title") or "").lower()
         e_text = (existing.get("raw_text") or existing.get("title") or "").lower()
-        text_sim = self._jaccard_similarity(c_text, e_text)
+        D = self._jaccard_similarity(c_text, e_text)
 
-        # Boost if same named location / landmark
+        # Boost if shared landmarks
         c_loc = (candidate.get("location_name") or "").lower().strip()
         e_loc = (existing.get("location_name") or "").lower().strip()
         if c_loc and e_loc and (c_loc in e_loc or e_loc in c_loc):
-            text_sim = min(1.0, text_sim + 0.35)
+            D = min(1.0, D + 0.30)
 
-        # Weighted composite score:
-        # Spatial is primary in physical disasters (40%), followed by text (25%), type (20%), time (15%)
+        # Exact formula: M = 0.35*L + 0.20*T + 0.25*C + 0.20*D
         composite_score = (
-            0.40 * geo_sim +
-            0.25 * text_sim +
-            0.20 * type_sim +
-            0.15 * time_sim
+            0.35 * L +
+            0.20 * T +
+            0.25 * C +
+            0.20 * D
         )
 
         is_duplicate = composite_score >= self.auto_merge_threshold
@@ -105,15 +121,21 @@ class IncidentDeduplicator:
 
         return {
             "composite_score": round(composite_score, 3),
+            "match_score": round(composite_score, 3),
+            "formula": "M = 0.35L + 0.20T + 0.25C + 0.20D",
             "is_duplicate": is_duplicate,
             "is_potential_duplicate": is_potential,
             "distance_km": round(distance_km, 2),
             "delta_hours": round(delta_hours, 2),
             "components": {
-                "geo_similarity": round(geo_sim, 3),
-                "text_similarity": round(text_sim, 3),
-                "type_similarity": round(type_sim, 3),
-                "time_similarity": round(time_sim, 3)
+                "L_location": round(L, 3),
+                "T_time": round(T, 3),
+                "C_category": round(C, 3),
+                "D_description": round(D, 3),
+                "geo_similarity": round(L, 3),
+                "time_similarity": round(T, 3),
+                "type_similarity": round(C, 3),
+                "text_similarity": round(D, 3)
             },
             "status_label": "HIGH_CONFIDENCE_DUPLICATE" if is_duplicate else (
                 "POTENTIAL_CO_INCIDENT" if is_potential else "DISTINCT_INCIDENT"

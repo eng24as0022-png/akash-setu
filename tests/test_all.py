@@ -152,12 +152,28 @@ class TestMathematicalRiskEngine(unittest.TestCase):
             "vulnerable_groups": ["INFANTS_CHILDREN", "PREGNANT_WOMEN"],
             "infrastructure_damaged": ["BRIDGE_COLLAPSE"],
             "water_level_meters": 2.8,
+            "raw_text": "Massive flood rising fast, bridge collapsed, 14 trapped",
             "status": "PENDING_TRIAGE"
         }
         breakdown = self.engine.calculate_risk(incident)
         self.assertGreaterEqual(breakdown["final_score"], 80.0, "Critical flood with infants should score P1 (>=80)")
         self.assertEqual(breakdown["priority"], "P1")
         self.assertFalse(breakdown["is_provisional"])
+
+    def test_single_severe_medical_emergency_reaches_critical_priority(self):
+        """Prompt requirement: A single severe medical emergency (severe bleeding / breathing) must reach Critical (>= 80)."""
+        incident = {
+            "disaster_type": "MEDICAL",
+            "severity_level": "CRITICAL",
+            "trapped_count": 0,
+            "injured_count": 1, # Exactly 1 patient
+            "raw_text": "Urgent! Patient has severe bleeding and cannot breathe after rockfall. Immediate ambulance needed!",
+            "status": "PENDING_TRIAGE"
+        }
+        breakdown = self.engine.calculate_risk(incident)
+        self.assertGreaterEqual(breakdown["final_score"], 80.0, f"Single severe medical emergency must score >= 80, got {breakdown['final_score']}")
+        self.assertEqual(breakdown["priority"], "P1")
+        self.assertEqual(breakdown["priority_tier"], "Critical")
 
     def test_provisional_score_when_victim_count_unknown(self):
         incident = {
@@ -166,11 +182,13 @@ class TestMathematicalRiskEngine(unittest.TestCase):
             "trapped_count": None, # Genuine unknown count!
             "injured_count": None,
             "vulnerable_groups": ["ELDERLY"],
+            "raw_text": "Building collapsed at bazaar. Unknown how many trapped inside.",
             "status": "PENDING_TRIAGE"
         }
         breakdown = self.engine.calculate_risk(incident)
         self.assertTrue(breakdown["is_provisional"], "Unknown trapped count must trigger provisional scoring!")
-        self.assertIn("provisional uncertainty weight applied", breakdown["provisional_reasons"][0].lower())
+        reasons_text = " ".join(breakdown.get("reasons", [])).lower()
+        self.assertIn("provisional", reasons_text)
 
 
 class TestSatelliteSimulator(unittest.TestCase):
@@ -294,20 +312,65 @@ class TestFullSystemIntegration(unittest.TestCase):
         self.assertGreater(data["count"], 5)
 
     def test_api_submit_emergency_and_auto_triage(self):
+        """Test 1: Public SOS form submission with 3 required fields and unique tracking ID generation."""
         payload = {
-            "raw_text": "Rooftop collapse at Guptkashi market. 7 tourists trapped under wooden beams.",
-            "location_name": "Guptkashi Market",
-            "latitude": 30.528,
-            "longitude": 79.065,
-            "channel": "WEB"
+            "name": "Sunita Joshi",
+            "location": "Guptkashi Market Sector 2",
+            "description": "Rooftop collapse at market lodge. 7 tourists trapped under wooden beams. Water entering cellar."
         }
         status, data = self._call_handler("POST", "/api/emergency/submit", body=payload)
         self.assertEqual(status, 201)
         self.assertEqual(data["status"], "SUCCESS")
+        self.assertIn("AS-SOS-", data["message_id"], "Must generate unique SOS tracking ID")
         inc = data["incident"]
         self.assertIsNotNone(inc)
         self.assertIn("AS-INC-", inc["incident_code"])
         self.assertGreater(inc["risk_score"], 0)
+
+        # Test 2: Duplicate detection & consolidation without double-counting casualties
+        dup_payload = {
+            "name": "Local Shopkeeper",
+            "location": "Guptkashi Market Sector 2",
+            "description": "Lodge roof collapsed in market near temple. People trapped under beams. Need rescue!"
+        }
+        status2, data2 = self._call_handler("POST", "/api/emergency/submit", body=dup_payload)
+        self.assertEqual(status2, 201)
+        self.assertTrue(data2["is_duplicate_merged"], "Second report at same location & type must be auto-consolidated!")
+        self.assertEqual(data2["incident_id"], data["incident_id"], "Must consolidate into same incident!")
+
+    def test_rescue_team_email_allowlist_authentication(self):
+        """Test 4: Rescue team authentication with the 4 allowed emails vs unauthorized access."""
+        allowed_emails = [
+            "eng24as0018@dsu.edu.in",
+            "eng24as0022@dsu.edu.in",
+            "eng24as0016@dsu.edu.in",
+            "vinayvinu96636@gmail.com"
+        ]
+
+        # 1. Test all 4 allowed emails with correct demo password
+        for email_addr in allowed_emails:
+            status, data = self._call_handler("POST", "/api/auth/login", body={
+                "email": email_addr,
+                "password": "AkashSetu@2026"
+            })
+            self.assertEqual(status, 200, f"Allowed email {email_addr} should authenticate successfully")
+            self.assertTrue(data["authenticated"])
+            self.assertIsNotNone(data["token"])
+
+        # 2. Test unauthorized email address rejection
+        status, data = self._call_handler("POST", "/api/auth/login", body={
+            "email": "intruder@external.com",
+            "password": "AkashSetu@2026"
+        })
+        self.assertEqual(status, 401, "Unauthorized email must be rejected with 401")
+        self.assertIn("Access restricted to authorized rescue personnel", data["error"])
+
+        # 3. Test correct email with wrong password rejection
+        status, data = self._call_handler("POST", "/api/auth/login", body={
+            "email": "eng24as0022@dsu.edu.in",
+            "password": "WrongPassword123"
+        })
+        self.assertEqual(status, 401, "Invalid password must be rejected with 401")
 
     def test_api_satellite_burst_transmission(self):
         payload = {
