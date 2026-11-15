@@ -285,8 +285,26 @@ def get_incidents(status: Optional[str] = None, priority: Optional[str] = None,
         query += " AND (i.title LIKE ? OR i.location_name LIKE ? OR i.district LIKE ? OR i.incident_code LIKE ?)"
         params.extend([search_like, search_like, search_like, search_like])
 
-    # Sort primarily by risk_score DESC (so critical P1 comes first) then created_at DESC
-    query += " ORDER BY i.risk_score DESC, i.created_at DESC"
+    # Priority Sorting Rules:
+    # 1. Active unrescued emergencies come first (0); successfully rescued (RESOLVED, CLOSED) move down to bottom (1)
+    # 2. Tasks maintain emergency priority (P1 Critical > P2 Very High > P3 High > P4 Moderate > P5 Low)
+    # 3. Within the same priority tier, recent incoming requests appear first (created_at DESC, id DESC)
+    query += """
+        ORDER BY
+            CASE
+                WHEN i.status IN ('RESOLVED', 'CLOSED') THEN 1
+                ELSE 0
+            END ASC,
+            CASE
+                WHEN i.priority_level = 'P1' THEN 1
+                WHEN i.priority_level = 'P2' THEN 2
+                WHEN i.priority_level = 'P3' THEN 3
+                WHEN i.priority_level = 'P4' THEN 4
+                ELSE 5
+            END ASC,
+            i.created_at DESC,
+            i.id DESC
+    """
 
     cursor.execute(query, params)
     rows = cursor.fetchall()

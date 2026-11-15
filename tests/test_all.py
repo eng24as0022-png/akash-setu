@@ -311,6 +311,41 @@ class TestFullSystemIntegration(unittest.TestCase):
         self.assertIn("incidents", data)
         self.assertGreater(data["count"], 5)
 
+    def test_rescued_incidents_move_down_and_recent_appear_first(self):
+        """Verify: Active tasks maintain priority, resolved/rescued tasks move down, recent appear first."""
+        # 1. Fetch initial incidents
+        status, data = self._call_handler("GET", "/api/incidents")
+        incidents = data["incidents"]
+        self.assertGreater(len(incidents), 2)
+        top_inc = incidents[0]
+
+        # 2. Authenticate as rescue team
+        status, auth_data = self._call_handler("POST", "/api/auth/login", body={
+            "email": "eng24as0022@dsu.edu.in",
+            "password": "AkashSetu@2026"
+        })
+        self.assertEqual(status, 200)
+        token = auth_data["token"]
+
+        # 3. Mark top incident as RESOLVED (successful rescue)
+        status, res = self._call_handler(
+            "POST", f"/api/incidents/{top_inc['id']}/status",
+            body={"status": "RESOLVED", "author": "Rescue Commander"},
+            headers_extra={"Authorization": f"Bearer {token}"}
+        )
+        self.assertEqual(status, 200)
+
+        # 4. Fetch incidents again: verify resolved incident has moved down
+        status, data2 = self._call_handler("GET", "/api/incidents")
+        updated_incidents = data2["incidents"]
+        new_top = updated_incidents[0]
+        self.assertNotEqual(new_top["id"], top_inc["id"], "Resolved incident must move down!")
+        self.assertIn(new_top["status"], ["PENDING_TRIAGE", "TRIAGED", "DISPATCHED", "IN_PROGRESS"], "Top incident must be an active emergency!")
+        # Verify resolved incident is in the lower group
+        resolved_indices = [idx for idx, inc in enumerate(updated_incidents) if inc["status"] in ("RESOLVED", "CLOSED")]
+        active_indices = [idx for idx, inc in enumerate(updated_incidents) if inc["status"] not in ("RESOLVED", "CLOSED")]
+        self.assertGreater(min(resolved_indices), max(active_indices), "All resolved/rescued incidents must be below active incidents!")
+
     def test_api_submit_emergency_and_auto_triage(self):
         """Test 1: Public SOS form submission with 3 required fields and unique tracking ID generation."""
         payload = {

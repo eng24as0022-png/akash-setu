@@ -438,6 +438,27 @@ class AkashSetuApp {
             const data = await resp.json();
             this.incidents = data.incidents || [];
 
+            // Priority & Recency Sorting:
+            // 1. Active unrescued emergencies first (0); successfully rescued (RESOLVED, CLOSED) move down to bottom (1)
+            // 2. Task priority remains as before (P1 > P2 > P3 > P4 > P5)
+            // 3. Within same priority, recent requests appear first (created_at DESC, id DESC)
+            const prioRank = { 'P1': 1, 'P2': 2, 'P3': 3, 'P4': 4, 'P5': 5 };
+            this.incidents.sort((a, b) => {
+                const aRes = (a.status === 'RESOLVED' || a.status === 'CLOSED') ? 1 : 0;
+                const bRes = (b.status === 'RESOLVED' || b.status === 'CLOSED') ? 1 : 0;
+                if (aRes !== bRes) return aRes - bRes;
+
+                const aP = prioRank[a.priority_level] || 9;
+                const bP = prioRank[b.priority_level] || 9;
+                if (aP !== bP) return aP - bP;
+
+                const aTime = new Date(a.created_at || 0).getTime();
+                const bTime = new Date(b.created_at || 0).getTime();
+                if (aTime !== bTime) return bTime - aTime;
+
+                return (b.id || 0) - (a.id || 0);
+            });
+
             this.renderIncidentQueue();
             this.mapEngine.setData(this.incidents, this.teams);
             this.updateHeaderKPIs();
@@ -497,7 +518,9 @@ class AkashSetuApp {
 
         container.innerHTML = this.incidents.map(inc => {
             const isSelected = inc.id === this.selectedIncidentId ? "selected" : "";
+            const isRescued = inc.status === "RESOLVED" || inc.status === "CLOSED";
             const priorityClass = inc.priority_level.toLowerCase();
+            const cardResolvedClass = isRescued ? "resolved-card" : "";
 
             // Strict Null Preservation in display
             const trappedText = inc.trapped_count !== null ? `${inc.trapped_count} Trapped` : "Trapped Count Unconfirmed (NULL)";
@@ -509,12 +532,12 @@ class AkashSetuApp {
             const dupBadge = inc.duplicate_count > 0 ? `<span class="tag-infra">${inc.duplicate_count} DUPLICATES LINKED</span>` : "";
 
             return `
-                <div class="incident-card ${priorityClass} ${isSelected}" onclick="app.selectIncident(${inc.id})">
+                <div class="incident-card ${priorityClass} ${isSelected} ${cardResolvedClass}" onclick="app.selectIncident(${inc.id})" style="${isRescued ? 'opacity:0.65;border-left:4px solid #10b981;' : ''}">
                     <div class="card-top">
                         <span class="card-code">${inc.incident_code}</span>
                         <div class="card-badges">
                             <span class="priority-pill ${priorityClass}">${inc.priority_level}</span>
-                            <span class="status-pill">${inc.status}</span>
+                            <span class="status-pill" style="${isRescued ? 'color:#10b981;border-color:#10b981;background:rgba(16,185,129,0.1);font-weight:700;' : ''}">${isRescued ? 'RESCUED / SAFE ✅' : inc.status}</span>
                         </div>
                     </div>
                     <div class="card-title">${this.escapeHtml(inc.title)}</div>
@@ -527,9 +550,17 @@ class AkashSetuApp {
                         <div class="card-tags">
                             ${vulnTags}
                             ${dupBadge}
+                            ${isRescued ? '<span class="tag-infra" style="color:#10b981;border-color:#10b981;">MOVED DOWN (RESCUED)</span>' : ''}
                         </div>
-                        <div class="card-risk-score" style="color:${this.getRiskColor(inc.risk_score)};">
-                            ${inc.risk_score}<span style="font-size:0.7rem;color:var(--text-dim);">/100</span>
+                        <div style="display:flex;gap:0.4rem;align-items:center;">
+                            ${!isRescued ? `
+                                <button class="btn-secondary" style="font-size:0.68rem;padding:0.2rem 0.5rem;color:#10b981;border-color:rgba(16,185,129,0.4);" onclick="app.markRescued(${inc.id}, event)" title="Mark as successfully rescued and move down">
+                                    ✅ Rescued
+                                </button>
+                            ` : ''}
+                            <div class="card-risk-score" style="color:${this.getRiskColor(inc.risk_score)};">
+                                ${inc.risk_score}<span style="font-size:0.7rem;color:var(--text-dim);">/100</span>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -702,6 +733,15 @@ class AkashSetuApp {
                         <option value="CLOSED" ${inc.status === 'CLOSED' ? 'selected' : ''}>CLOSED (CONSOLIDATED)</option>
                     </select>
                 </div>
+                ${inc.status !== 'RESOLVED' && inc.status !== 'CLOSED' ? `
+                    <button class="btn-primary" style="margin-top:0.65rem;width:100%;background:linear-gradient(135deg, #059669, #10b981);border:none;padding:0.6rem;font-weight:700;display:flex;justify-content:center;align-items:center;gap:0.4rem;" onclick="app.updateSelectedStatus(${inc.id}, 'RESOLVED')">
+                        ✅ Mark Rescue Completed / Safe (Moves Down)
+                    </button>
+                ` : `
+                    <div style="margin-top:0.6rem;padding:0.5rem;background:rgba(16,185,129,0.15);border:1px solid #10b981;border-radius:4px;color:#6ee7b7;font-size:0.75rem;text-align:center;">
+                        ✅ Successful Rescue Completed — Incident moved to bottom of queue.
+                    </div>
+                `}
             </div>
 
             <!-- 5. Operational Audit Trail -->
@@ -710,6 +750,11 @@ class AkashSetuApp {
                 ${timelineHtml}
             </div>
         `;
+    }
+
+    async markRescued(incidentId, event) {
+        if (event) event.stopPropagation();
+        await this.updateSelectedStatus(incidentId, "RESOLVED");
     }
 
     async dispatchTeamToSelected(incidentId) {
